@@ -131,6 +131,8 @@ The runtime also exposes `console` plus the following globals:
 | Global                                                          | Meaning |
 |-----------------------------------------------------------------| --- |
 | `console.log`, `console.warn`, `console.error`, `console.debug` | Forward to the Go logger |
+| `atob(base64)` | Decode a base64 string to a binary string |
+| `btoa(binaryString)` | Encode a binary string to base64 |
 | `state.get()`, `state.set(value)`                               | Persisted JSON-like state for the loaded script |
 | `state.update(fn)`                                              | Atomically transform the persisted state in SQLite |
 | `app.loop(delayMs, fn)`                                         | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |

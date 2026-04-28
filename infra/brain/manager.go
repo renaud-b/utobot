@@ -3,6 +3,8 @@ package brain
 import (
 	"context"
 	"crypto/md5"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -24,6 +26,16 @@ type Manager interface {
 	Match(method, path string) (Route, map[string]string, bool)
 	InvokeHandler(route Route, data any) (goja.Value, error)
 	Path() string
+}
+
+func hexString(bytes []byte) string {
+	const table = "0123456789abcdef"
+	out := make([]byte, len(bytes)*2)
+	for i, b := range bytes {
+		out[i*2] = table[b>>4]
+		out[i*2+1] = table[b&0x0f]
+	}
+	return string(out)
 }
 
 type Route struct {
@@ -137,6 +149,9 @@ func (m *JsManager) instantiateRuntime(source []byte) (*goja.Runtime, map[string
 	}
 	if err := bindConsole(runtime); err != nil {
 		return nil, nil, nil, fmt.Errorf("bind console: %w", err)
+	}
+	if err := bindBase64(runtime); err != nil {
+		return nil, nil, nil, fmt.Errorf("bind base64: %w", err)
 	}
 	if err := bindFetch(runtime); err != nil {
 		return nil, nil, nil, fmt.Errorf("bind fetch: %w", err)
@@ -374,6 +389,50 @@ func bindConsole(runtime *goja.Runtime) error {
 	return runtime.Set("console", console)
 }
 
+func bindBase64(runtime *goja.Runtime) error {
+	atobFn := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("atob requires a base64 string"))
+		}
+
+		decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(call.Argument(0).String()))
+		if err != nil {
+			panic(runtime.NewGoError(fmt.Errorf("atob decode: %w", err)))
+		}
+
+		return runtime.ToValue(string(decoded))
+	}
+
+	btoaFn := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("btoa requires a binary string"))
+		}
+
+		input := call.Argument(0).String()
+		for _, r := range input {
+			if r > 255 {
+				panic(runtime.NewGoError(fmt.Errorf("btoa input contains characters outside Latin1 range")))
+			}
+		}
+
+		buf := make([]byte, len(input))
+		for i := 0; i < len(input); i++ {
+			buf[i] = input[i]
+		}
+
+		return runtime.ToValue(base64.StdEncoding.EncodeToString(buf))
+	}
+
+	if err := runtime.Set("atob", atobFn); err != nil {
+		return err
+	}
+	if err := runtime.Set("btoa", btoaFn); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, stateStore state.ContextStore, loop **autonomousLoop) error {
 	contextValue, err := loadContextValue(runtime, stateStore)
 	if err != nil {
@@ -571,9 +630,12 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 			panic(runtime.NewTypeError("crypto.verify_ecdsa_signature requires public_key_hex, message_hash_hex, and signature_hex"))
 		}
 
-		ok, err := crypto.VerifySignature(
+		sum := sha256.Sum256([]byte(call.Argument(1).String()))
+		hexHash := hexString(sum[:])
+
+		ok, err := crypto.VerifyCompactSignature(
 			call.Argument(0).String(),
-			call.Argument(1).String(),
+			hexHash,
 			call.Argument(2).String(),
 		)
 		if err != nil {

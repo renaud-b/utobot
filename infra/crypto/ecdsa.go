@@ -117,10 +117,7 @@ func VerifySignature(publicKeyHex string, messageHashHex string, signatureHex st
 		return false, err
 	}
 
-	messageHashHexHash := sha256.Sum256([]byte(messageHashHex))
-	messageHash := hex.EncodeToString(messageHashHexHash[:])
-
-	hashBytes, err := decodeHex(messageHash)
+	hashBytes, err := decodeHex(messageHashHex)
 	if err != nil {
 		return false, fmt.Errorf("decode message hash: %w", err)
 	}
@@ -130,14 +127,24 @@ func VerifySignature(publicKeyHex string, messageHashHex string, signatureHex st
 		return false, fmt.Errorf("decode signature: %w", err)
 	}
 
-	if len(signature) == 64 {
-		return verifyCompactSignature(publicKey, hashBytes, signature)
-	}
-
 	return ecdsa.VerifyASN1(publicKey, hashBytes, signature), nil
 }
 
-func verifyCompactSignature(publicKey *ecdsa.PublicKey, hashBytes []byte, signature []byte) (bool, error) {
+func VerifyCompactSignature(publicKeyHex string, messageHashHex string, signatureHex string) (bool, error) {
+	publicKey, err := publicKeyFromHex(publicKeyHex)
+	if err != nil {
+		return false, err
+	}
+
+	hashBytes, err := decodeHex(messageHashHex)
+	if err != nil {
+		return false, fmt.Errorf("decode message hash: %w", err)
+	}
+
+	signature, err := decodeHex(signatureHex)
+	if err != nil {
+		return false, fmt.Errorf("decode signature: %w", err)
+	}
 	if len(signature) != 64 {
 		return false, fmt.Errorf("compact signature must be 64 bytes")
 	}

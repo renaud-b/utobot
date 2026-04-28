@@ -69,9 +69,9 @@ func TestVerifyCompactSignature(t *testing.T) {
 	}
 
 	signature := compactSignatureHex(r, s)
-	ok, err := VerifySignature(kp.PublicKeyHex, hexString(sum[:]), signature)
+	ok, err := VerifyCompactSignature(kp.PublicKeyHex, hexString(sum[:]), signature)
 	if err != nil {
-		t.Fatalf("VerifySignature() error = %v", err)
+		t.Fatalf("VerifyCompactSignature() error = %v", err)
 	}
 	if !ok {
 		t.Fatal("expected compact signature to verify")
@@ -100,11 +100,18 @@ func TestSaveAndLoadWalletFile(t *testing.T) {
 }
 
 func TestVerifySignature(t *testing.T) {
-	signature := "3045022100c76ddc9cb73c8e327553759aea6112c3a389054389d274d4895f18ccf7723ae60220710a802657724110b461f1eea3a3b1ac6795c8832e77950b7baa106409e59563"
-	publicKey := "04e6a7644db620c90c8783322160de8f436b201a0d18a6c422f418d7ef297ad9c2281b82186c36d6d8601df5cf721784e6d2ac6e65355d1da44a4555b7c489dbe1"
-	//address := "0xe14b87e8e77a34b28bc2a316dbe2c309dfeba73b"
-	payload := "aGVsbG8gd29ybGQh"
-	ok, err := VerifySignature(publicKey, payload, signature)
+	kp, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+
+	sum := sha256.Sum256([]byte("hello world!"))
+	signature, err := SignMessage(kp.PrivateKeyHex, hexString(sum[:]))
+	if err != nil {
+		t.Fatalf("SignMessage() error = %v", err)
+	}
+
+	ok, err := VerifySignature(kp.PublicKeyHex, hexString(sum[:]), signature)
 	if err != nil {
 		t.Fatalf("VerifySignature() error = %v", err)
 	}

@@ -106,6 +106,51 @@ module.exports = {
 	}
 }
 
+func TestManagerBase64Helpers(t *testing.T) {
+	manager := NewManager()
+
+	err := manager.LoadSource("/brain.js", []byte(`
+module.exports = {
+	routes: {
+		'GET /base64': function base64Route() {
+			const encoded = btoa('hello');
+			return {
+				status: 200,
+				body: {
+					encoded: encoded,
+					decoded: atob(encoded),
+				}
+			};
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	route, _, ok := manager.Match("GET", "/base64")
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+
+	result, err := manager.InvokeHandler(route, nil)
+	if err != nil {
+		t.Fatalf("expected no error invoking handler, got %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if body["encoded"] != "aGVsbG8=" {
+		t.Fatalf("unexpected encoded value: %#v", body["encoded"])
+	}
+	if body["decoded"] != "hello" {
+		t.Fatalf("unexpected decoded value: %#v", body["decoded"])
+	}
+}
+
 func TestManagerAppContextPersistsAcrossInvocations(t *testing.T) {
 	manager := NewManager()
 
