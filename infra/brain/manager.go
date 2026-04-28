@@ -14,6 +14,7 @@ import (
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
+	"github.com/google/uuid"
 )
 
 type Manager interface {
@@ -514,6 +515,14 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 	}
 
 	if err := app.Set("loop", loopFn); err != nil {
+		return err
+	}
+
+	newUUIDFn := func(call goja.FunctionCall) goja.Value {
+		return runtime.ToValue(uuid.New())
+	}
+
+	if err := app.Set("new_uuid", newUUIDFn); err != nil {
 		return err
 	}
 
