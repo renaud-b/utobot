@@ -51,7 +51,8 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 		},
 		params: map[string]string{"id": "42"},
 		result: rt.ToValue(map[string]any{
-			"status": 202,
+			"status":      202,
+			"contentType": "application/vnd.example+json",
 			"headers": map[string]any{
 				"x-test": "yes",
 			},
@@ -77,7 +78,7 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 		t.Fatalf("unexpected response header: %q", got)
 	}
 
-	if got := rr.Header().Get("content-type"); got != "application/json" {
+	if got := rr.Header().Get("content-type"); got != "application/vnd.example+json" {
 		t.Fatalf("unexpected content-type: %q", got)
 	}
 

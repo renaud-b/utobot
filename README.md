@@ -257,7 +257,7 @@ module.exports = {
 
 Handlers can return a plain string, a plain object, or nothing.
 
-If a handler returns a string, Utobot writes it as plain text. If it returns an object, Utobot understands `status`, `headers`, and `body`. If `body` is an object, it is encoded as JSON. If the handler returns nothing, the server answers with `204 No Content`.
+If a handler returns a string, Utobot writes it as plain text. If it returns an object, Utobot understands `status`, `contentType`, `headers`, and `body`. If `body` is an object, it is encoded as JSON. If the handler returns nothing, the server answers with `204 No Content`.
 
 ## Reload
 

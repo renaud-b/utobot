@@ -138,6 +138,11 @@ func writeStructuredResponse(w http.ResponseWriter, resp map[string]any) error {
 	}
 
 	headers := responseHeaders(resp["headers"])
+	if _, ok := w.Header()["Content-Type"]; !ok {
+		if contentType, ok := resp["contentType"].(string); ok && strings.TrimSpace(contentType) != "" {
+			w.Header().Set("content-type", strings.TrimSpace(contentType))
+		}
+	}
 	for key, value := range headers {
 		if len(value) > 0 {
 			w.Header().Set(key, value[0])
