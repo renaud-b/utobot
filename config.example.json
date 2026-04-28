@@ -1,0 +1,8 @@
+{
+  "http_address": "127.0.0.1:8080",
+  "port": 8081,
+  "wallet_path": "./wallet.json",
+  "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
+  "script_height_path": "./.utobot.script-height.json",
+  "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load"
+}

@@ -1,0 +1,14 @@
+.codex
+.idea/
+.env
+
+config.json
+wallet.json
+*.utx
+
+.utobot.script-height.json
+.utx/
+
+node_modules/
+build/
+cmake-build-*/

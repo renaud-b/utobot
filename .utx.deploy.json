@@ -1,0 +1,13 @@
+{
+    "targets": [
+        {
+            "chain": "AZ3S6vUFebOtAwaQ-dqRNg",
+            "genesis_labels": [],
+            "kind": "go",
+            "last_revision_id": "",
+            "last_synced_hash": "",
+            "path": "main.go"
+        }
+    ],
+    "version": 1
+}
