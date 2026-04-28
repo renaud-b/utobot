@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 	walletcrypto "utobot/infra/crypto"
+	"utobot/infra/llm"
 
 	"utobot/infra/brain"
 	"utobot/infra/httpserver"
@@ -61,7 +62,16 @@ func Run(args []string) error {
 		return err
 	}
 
-	manager := brain.NewManagerWithEncryption(w, encryptionKey)
+	var llmConnector brain.LLMConnector
+	if params.LLMKey != "" {
+		llmConnector, err = llm.NewOpenAIConnector(params.LLMKey)
+		if err != nil {
+			return err
+		}
+		slog.Info("llm connector configured", "provider", "openai")
+	}
+
+	manager := brain.NewManagerWithEncryptionAndLLM(w, encryptionKey, llmConnector)
 	if err := manager.LoadSource(params.BrainChainID, js); err != nil {
 		return err
 	}

@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -141,5 +142,68 @@ func TestServerReturns404ForMissingRoute(t *testing.T) {
 
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("unexpected status: got %d want %d", rr.Code, http.StatusNotFound)
+	}
+}
+
+func TestServerReturnsDetailedErrorPageForBrainError(t *testing.T) {
+	manager := &fakeBrainManager{
+		hasRoute: true,
+		route: brain.Route{
+			Method: http.MethodGet,
+			Path:   "/boom",
+		},
+		invokeErr: errors.New("invoke handler GET /boom: Error: exploded\n    at boom (/brain.js:3:9)"),
+	}
+	server := New(8081, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/boom", nil)
+	req.Header.Set("X-Request-Id", "req-42")
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("unexpected status: got %d want %d", rr.Code, http.StatusInternalServerError)
+	}
+	if got := rr.Header().Get("content-type"); got != "text/html; charset=utf-8" {
+		t.Fatalf("unexpected content-type: %q", got)
+	}
+
+	body := rr.Body.String()
+	for _, want := range []string{
+		"Brain script error",
+		"GET /boom",
+		"req-42",
+		"Error: exploded",
+		"at boom (/brain.js:3:9)",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("expected error page to contain %q, got:\n%s", want, body)
+		}
+	}
+}
+
+func TestServerEscapesDetailedErrorPage(t *testing.T) {
+	manager := &fakeBrainManager{
+		hasRoute: true,
+		route: brain.Route{
+			Method: http.MethodGet,
+			Path:   "/boom",
+		},
+		invokeErr: errors.New(`<script>alert("xss")</script>`),
+	}
+	server := New(8081, manager)
+
+	req := httptest.NewRequest(http.MethodGet, "http://example.com/boom", nil)
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	body := rr.Body.String()
+	if strings.Contains(body, "<script>") {
+		t.Fatalf("expected script tag to be escaped, got:\n%s", body)
+	}
+	if !strings.Contains(body, "&lt;script&gt;") {
+		t.Fatalf("expected escaped script tag, got:\n%s", body)
 	}
 }

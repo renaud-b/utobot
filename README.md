@@ -58,6 +58,7 @@ The config loader expects a flat JSON object with these fields.
 | `brain_chain_id` | yes | Chain id used to fetch the JavaScript brain |
 | `script_height_path` | no | File used by the reload worker to remember the last seen height |
 | `encryption_key` | no | Base64-encoded 32-byte AES-256-GCM key; generated and saved on first load when absent |
+| `llm_key` | no | OpenAI API key used by the LLM connector |
 
 Example:
 
@@ -68,7 +69,8 @@ Example:
   "wallet_path": "./wallet.json",
   "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
   "script_height_path": "./.utobot.script-height.json",
-  "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load"
+  "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
+  "llm_key": "sk-your-openai-api-key"
 }
 ```
 
@@ -129,6 +131,7 @@ The runtime also exposes two globals:
 | `app.get_context()`, `app.set_context(value)` | Shared in-memory state for the loaded script |
 | `app.configure_loop(delayMs, fn)` | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
 | `app.encrypt(plaintext)`, `app.decrypt(payload)` | AES-256-GCM encrypt/decrypt with the configured key |
+| `app.llm(prompt)` | Generate text with the configured OpenAI connector |
 
 `app` is useful when the script wants to keep JSON-like state across multiple requests.
 
@@ -197,6 +200,27 @@ module.exports = {
 ```
 
 Aliases are also available under `app.cypher.encrypt/decrypt` and `app.cipher.encrypt/decrypt`.
+
+## LLM
+
+When `llm_key` is configured, brains can invoke the OpenAI connector synchronously from JavaScript.
+
+```js
+module.exports = {
+  routes: {
+    "POST /ask": function (req) {
+      return {
+        status: 200,
+        body: {
+          answer: app.llm(req.json.prompt)
+        }
+      };
+    }
+  }
+};
+```
+
+Aliases are available as `app.generate_text`, `app.ask_llm`, `app.llm_connector.generate`, and `app.llm_connector.generate_text`.
 
 ## Responses
 

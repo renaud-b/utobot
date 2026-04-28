@@ -31,11 +31,16 @@ type JsManager struct {
 	mu         sync.RWMutex
 	wallet     crypto.KeyPair
 	cipherKey  []byte
+	llm        LLMConnector
 	runtime    *goja.Runtime
 	routes     map[string]Route
 	path       string
 	loopCancel context.CancelFunc
 	loopDone   chan struct{}
+}
+
+type LLMConnector interface {
+	GenerateText(ctx context.Context, prompt string) (string, error)
 }
 
 type autonomousLoop struct {
@@ -60,6 +65,11 @@ func NewManager(wallet ...crypto.KeyPair) Manager {
 func NewManagerWithEncryption(wallet crypto.KeyPair, cipherKey []byte) Manager {
 	keyCopy := append([]byte(nil), cipherKey...)
 	return &JsManager{wallet: wallet, cipherKey: keyCopy}
+}
+
+func NewManagerWithEncryptionAndLLM(wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector) Manager {
+	keyCopy := append([]byte(nil), cipherKey...)
+	return &JsManager{wallet: wallet, cipherKey: keyCopy, llm: llm}
 }
 
 func (m *JsManager) LoadSource(path string, source []byte) error {
@@ -92,7 +102,7 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 	if err := bindConsole(runtime); err != nil {
 		return fmt.Errorf("bind console: %w", err)
 	}
-	if err := bindApp(runtime, m.wallet, m.cipherKey, &loop); err != nil {
+	if err := bindApp(runtime, m.wallet, m.cipherKey, m.llm, &loop); err != nil {
 		return fmt.Errorf("bind app: %w", err)
 	}
 
@@ -310,7 +320,7 @@ func bindConsole(runtime *goja.Runtime) error {
 	return runtime.Set("console", console)
 }
 
-func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, loop **autonomousLoop) error {
+func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector, loop **autonomousLoop) error {
 	app := runtime.NewObject()
 	var contextValue goja.Value = runtime.NewObject()
 
@@ -428,6 +438,46 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, loo
 		return err
 	}
 	if err := app.Set("cipher", cipher); err != nil {
+		return err
+	}
+
+	generateText := func(call goja.FunctionCall) goja.Value {
+		if llm == nil {
+			panic(runtime.NewGoError(fmt.Errorf("llm connector is not configured")))
+		}
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("llm requires prompt"))
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+
+		text, err := llm.GenerateText(ctx, call.Argument(0).String())
+		if err != nil {
+			panic(runtime.NewGoError(err))
+		}
+
+		return runtime.ToValue(text)
+	}
+
+	llmObject := runtime.NewObject()
+	if err := llmObject.Set("generate", generateText); err != nil {
+		return err
+	}
+	if err := llmObject.Set("generate_text", generateText); err != nil {
+		return err
+	}
+
+	if err := app.Set("llm", generateText); err != nil {
+		return err
+	}
+	if err := app.Set("generate_text", generateText); err != nil {
+		return err
+	}
+	if err := app.Set("ask_llm", generateText); err != nil {
+		return err
+	}
+	if err := app.Set("llm_connector", llmObject); err != nil {
 		return err
 	}
 

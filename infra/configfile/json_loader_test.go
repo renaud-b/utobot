@@ -18,7 +18,8 @@ func TestJSONLoaderLoad(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js"
+		"brain_chain_id": "./brain.js",
+		"llm_key": "sk-test"
 	}`)
 
 	if err := os.WriteFile(path, content, 0o600); err != nil {
@@ -41,6 +42,7 @@ func TestJSONLoaderLoad(t *testing.T) {
 		WalletPath:    "./wallet.json",
 		BrainChainID:  "./brain.js",
 		EncryptionKey: params.EncryptionKey,
+		LLMKey:        "sk-test",
 	}
 
 	if params != want {

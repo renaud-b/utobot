@@ -1,11 +1,26 @@
 package brain
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	walletcrypto "utobot/infra/crypto"
 )
+
+type fakeLLMConnector struct {
+	prompt string
+	text   string
+	err    error
+}
+
+func (f *fakeLLMConnector) GenerateText(ctx context.Context, prompt string) (string, error) {
+	f.prompt = prompt
+	if f.err != nil {
+		return "", f.err
+	}
+	return f.text, nil
+}
 
 func TestManagerLoadSourceAndInvokeHandler(t *testing.T) {
 	manager := NewManager()
@@ -332,6 +347,86 @@ module.exports = {
 	}
 	if body["cipherDecrypted"] != "classified" {
 		t.Fatalf("unexpected cipher decrypted value: %#v", body["cipherDecrypted"])
+	}
+}
+
+func TestManagerAppLLMGeneratesText(t *testing.T) {
+	key, err := walletcrypto.GenerateEncryptionKey()
+	if err != nil {
+		t.Fatalf("GenerateEncryptionKey() error = %v", err)
+	}
+
+	fakeLLM := &fakeLLMConnector{text: "llm response"}
+	manager := NewManagerWithEncryptionAndLLM(walletcrypto.KeyPair{}, key, fakeLLM)
+
+	err = manager.LoadSource("/brain.js", []byte(`
+module.exports = {
+	routes: {
+		'POST /llm': function llmRoute(data) {
+			return {
+				status: 200,
+				body: {
+					response: app.llm(data.prompt),
+					aliasResponse: app.llm_connector.generate_text('alias prompt'),
+				},
+			};
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	route, _, ok := manager.Match("POST", "/llm")
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+
+	result, err := manager.InvokeHandler(route, map[string]any{"prompt": "brain prompt"})
+	if err != nil {
+		t.Fatalf("expected no error invoking handler, got %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if body["response"] != "llm response" {
+		t.Fatalf("unexpected llm response: %#v", body["response"])
+	}
+	if body["aliasResponse"] != "llm response" {
+		t.Fatalf("unexpected llm alias response: %#v", body["aliasResponse"])
+	}
+	if fakeLLM.prompt != "alias prompt" {
+		t.Fatalf("unexpected prompt: %q", fakeLLM.prompt)
+	}
+}
+
+func TestManagerAppLLMReturnsErrorWhenUnconfigured(t *testing.T) {
+	manager := NewManager()
+
+	err := manager.LoadSource("/brain.js", []byte(`
+module.exports = {
+	routes: {
+		'POST /llm': function llmRoute(data) {
+			return app.llm(data.prompt);
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	route, _, ok := manager.Match("POST", "/llm")
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+
+	_, err = manager.InvokeHandler(route, map[string]any{"prompt": "brain prompt"})
+	if err == nil {
+		t.Fatal("expected missing llm connector error")
 	}
 }
 

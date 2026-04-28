@@ -9,6 +9,7 @@ type Parameters struct {
 	BrainChainID     string `json:"brain_chain_id"`
 	ScriptHeightPath string `json:"script_height_path"`
 	EncryptionKey    string `json:"encryption_key"`
+	LLMKey           string `json:"llm_key"`
 }
 
 func (p Parameters) Validate() error {

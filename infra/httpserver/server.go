@@ -3,6 +3,7 @@ package httpserver
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io"
 	"log/slog"
 	"net/http"
@@ -55,7 +56,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.manager.InvokeHandler(route, payload)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErrorPage(w, http.StatusInternalServerError, "Brain script error", err, route, r)
 		return
 	}
 
@@ -65,7 +66,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := writeResponse(w, result.Export()); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		writeErrorPage(w, http.StatusInternalServerError, "Response rendering error", err, route, r)
 	}
 }
 
@@ -215,3 +216,122 @@ func toStatusCode(value any) (int, bool) {
 
 	return 0, false
 }
+
+func writeErrorPage(w http.ResponseWriter, status int, title string, err error, route brain.Route, r *http.Request) {
+	w.Header().Set("content-type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+
+	data := errorPageData{
+		Status:     status,
+		StatusText: http.StatusText(status),
+		Title:      title,
+		Error:      err.Error(),
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		Route:      route.Method + " " + route.Path,
+		RequestID:  r.Header.Get("X-Request-Id"),
+	}
+
+	if renderErr := errorPageTemplate.Execute(w, data); renderErr != nil {
+		slog.Error("failed to render error page", "error", renderErr)
+	}
+}
+
+type errorPageData struct {
+	Status     int
+	StatusText string
+	Title      string
+	Error      string
+	Method     string
+	Path       string
+	Route      string
+	RequestID  string
+}
+
+var errorPageTemplate = template.Must(template.New("error-page").Parse(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Status}} {{.StatusText}} - {{.Title}}</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #101418;
+      --card: #17202a;
+      --text: #edf2f7;
+      --muted: #9fb1c1;
+      --accent: #ffb86b;
+      --border: #314253;
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: radial-gradient(circle at top left, #26384a, var(--bg) 42rem);
+      color: var(--text);
+      font: 15px/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+    }
+    main {
+      box-sizing: border-box;
+      width: min(980px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 48px 0;
+    }
+    section {
+      background: color-mix(in srgb, var(--card) 92%, transparent);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, .35);
+      overflow: hidden;
+    }
+    header {
+      padding: 24px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    h1 {
+      margin: 0;
+      color: var(--accent);
+      font-size: clamp(24px, 4vw, 40px);
+      letter-spacing: -.04em;
+    }
+    dl {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 8px 18px;
+      margin: 0;
+      padding: 22px 28px;
+      border-bottom: 1px solid var(--border);
+    }
+    dt {
+      color: var(--muted);
+    }
+    dd {
+      margin: 0;
+      overflow-wrap: anywhere;
+    }
+    pre {
+      margin: 0;
+      padding: 24px 28px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      color: #ffd7ba;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section>
+      <header>
+        <h1>{{.Status}} {{.StatusText}}: {{.Title}}</h1>
+      </header>
+      <dl>
+        <dt>Request</dt><dd>{{.Method}} {{.Path}}</dd>
+        <dt>Route</dt><dd>{{.Route}}</dd>
+        {{if .RequestID}}<dt>Request ID</dt><dd>{{.RequestID}}</dd>{{end}}
+      </dl>
+      <pre>{{.Error}}</pre>
+    </section>
+  </main>
+</body>
+</html>
+`))
