@@ -128,14 +128,16 @@ Each handler receives one argument: a request payload built by Go. It looks like
 
 The runtime also exposes `console` plus the following globals:
 
-| Global | Meaning |
-| --- | --- |
+| Global                                                          | Meaning |
+|-----------------------------------------------------------------| --- |
 | `console.log`, `console.warn`, `console.error`, `console.debug` | Forward to the Go logger |
-| `state.get()`, `state.set(value)` | Persisted JSON-like state for the loaded script |
-| `state.update(fn)` | Atomically transform the persisted state in SQLite |
-| `app.loop(delayMs, fn)` | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
-| `crypto.encrypt(plaintext)`, `crypto.decrypt(payload)` | AES-256-GCM encrypt/decrypt with the configured key |
-| `llm.ask(prompt)` | Generate text with the configured OpenAI connector |
+| `state.get()`, `state.set(value)`                               | Persisted JSON-like state for the loaded script |
+| `state.update(fn)`                                              | Atomically transform the persisted state in SQLite |
+| `app.loop(delayMs, fn)`                                         | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
+| `app.new_uuid()`                                                | Generate a new UUID v4 string |
+| `fetch(url, init)`                                                | Synchronous HTTP fetch with the configured timeout and JSON body support |
+| `crypto.encrypt(plaintext)`, `crypto.decrypt(payload)`          | AES-256-GCM encrypt/decrypt with the configured key |
+| `llm.ask(prompt)`                                               | Generate text with the configured OpenAI connector |
 
 Avoid mutating shared state at module load time; initialize it inside a route or loop with `state.update(...)` or `state.set(...)`.
 
