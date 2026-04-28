@@ -13,7 +13,7 @@ services:
       - PORT=9000
 
     volumes:
-      - ./assets:/app/assets
+      - ./config.json:/etc/utobot/config.json
 
     labels:
       - "traefik.enable=true"
