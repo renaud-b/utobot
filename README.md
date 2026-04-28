@@ -1,6 +1,6 @@
 # Utobot
 
-Utobot is a small Go HTTP host that loads a JavaScript brain, serves HTTP routes, and keeps the runtime state on the Go side.
+Utobot is a small Go HTTP host that loads a JavaScript brain, serves HTTP routes, and keeps the runtime state in SQLite on the Go side.
 
 The current code is intentionally simple. It reads startup parameters from JSON, fetches a brain script by chain id, loads that script into `goja`, starts an HTTP server, and reloads the script when the backing chain height changes.
 
@@ -56,6 +56,7 @@ The config loader expects a flat JSON object with these fields.
 | `port` | yes | Port used by the local HTTP server |
 | `wallet_path` | yes | Required by startup validation; currently kept in the loaded parameters |
 | `brain_chain_id` | yes | Chain id used to fetch the JavaScript brain |
+| `state_db_path` | yes | SQLite file used to persist the bot state |
 | `script_height_path` | no | File used by the reload worker to remember the last seen height |
 | `encryption_key` | no | Base64-encoded 32-byte AES-256-GCM key; generated and saved on first load when absent |
 | `llm_key` | no | OpenAI API key used by the LLM connector |
@@ -68,6 +69,7 @@ Example:
   "port": 8081,
   "wallet_path": "./wallet.json",
   "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
+  "state_db_path": "./.utobot.state.sqlite",
   "script_height_path": "./.utobot.script-height.json",
   "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
   "llm_key": "sk-your-openai-api-key"
@@ -128,26 +130,29 @@ The runtime also exposes `console` and one `app` object:
 | Global | Meaning |
 | --- | --- |
 | `console.log`, `console.warn`, `console.error`, `console.debug` | Forward to the Go logger |
-| `app.get_context()`, `app.set_context(value)` | Shared in-memory state for the loaded script |
+| `app.state.get()`, `app.state.set(value)` | Persisted JSON-like state for the loaded script |
+| `app.state.update(fn)` | Atomically transform the persisted state in SQLite |
 | `app.configure_loop(delayMs, fn)` | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
 | `app.encrypt(plaintext)`, `app.decrypt(payload)` | AES-256-GCM encrypt/decrypt with the configured key |
 | `app.llm(prompt)` | Generate text with the configured OpenAI connector |
 
-`app` is useful when the script wants to keep JSON-like state across multiple requests.
+`app` is useful when the script wants to keep JSON-like state across multiple requests and reloads.
+`app.get_context()`, `app.set_context(value)`, and `app.update_context(fn)` remain available as aliases.
+Avoid mutating shared state at module load time; initialize it inside a route or loop with `app.state.update(...)` or `app.state.set(...)`.
 
 ```js
-app.set_context({ counter: 0 });
-
 module.exports = {
   routes: {
     "POST /count": function (req) {
-      const ctx = app.get_context();
-      ctx.counter += 1;
+      app.state.update(function (ctx) {
+        ctx.counter = (ctx.counter || 0) + 1;
+        return ctx;
+      });
 
       return {
         status: 200,
         body: {
-          counter: ctx.counter
+          counter: app.state.get().counter
         }
       };
     }
@@ -157,20 +162,21 @@ module.exports = {
 
 ## Autonomous Loop
 
-A brain can configure one autonomous loop at load time. The loop runs inside the same JavaScript runtime as request handlers, so context and module-level variables are shared.
+A brain can configure one autonomous loop at load time. The loop runs in its own runtime, so shared state should go through `app.state` rather than module-level variables.
 
 ```js
-let ticks = 0;
-
 app.configure_loop(5000, function autonomousTick() {
-  ticks += 1;
-  console.log("autonomous tick", ticks);
+  app.state.update(function (ctx) {
+    ctx.ticks = (ctx.ticks || 0) + 1;
+    return ctx;
+  });
+  console.log("autonomous tick", app.state.get().ticks);
 });
 
 module.exports = {
   routes: {
     "GET /ticks": function () {
-      return { status: 200, body: { ticks } };
+      return { status: 200, body: { ticks: app.state.get().ticks || 0 } };
     }
   }
 };

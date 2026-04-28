@@ -7,6 +7,7 @@ type Parameters struct {
 	Port             int    `json:"port"`
 	WalletPath       string `json:"wallet_path"`
 	BrainChainID     string `json:"brain_chain_id"`
+	StateDBPath      string `json:"state_db_path"`
 	ScriptHeightPath string `json:"script_height_path"`
 	EncryptionKey    string `json:"encryption_key"`
 	LLMKey           string `json:"llm_key"`
@@ -24,6 +25,9 @@ func (p Parameters) Validate() error {
 	}
 	if p.BrainChainID == "" {
 		return fmt.Errorf("brain_path is required")
+	}
+	if p.StateDBPath == "" {
+		return fmt.Errorf("state_db_path is required")
 	}
 	return nil
 }

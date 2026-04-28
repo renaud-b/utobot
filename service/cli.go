@@ -11,6 +11,7 @@ import (
 	"utobot/infra/brain"
 	"utobot/infra/httpserver"
 	"utobot/infra/network"
+	"utobot/infra/state"
 	"utobot/infra/worker"
 
 	"utobot/infra/configfile"
@@ -37,6 +38,7 @@ func Run(args []string) error {
 		"http_address", params.HTTPAddress,
 		"wallet_path", params.WalletPath,
 		"brain_chain_id", params.BrainChainID,
+		"state_db_path", params.StateDBPath,
 	)
 
 	client := network.NewHttpClient(params.HTTPAddress)
@@ -71,7 +73,13 @@ func Run(args []string) error {
 		slog.Info("llm connector configured", "provider", "openai")
 	}
 
-	manager := brain.NewManagerWithEncryptionAndLLM(w, encryptionKey, llmConnector)
+	stateStore, err := state.NewSQLiteStore(params.StateDBPath)
+	if err != nil {
+		return err
+	}
+	defer stateStore.Close()
+
+	manager := brain.NewManagerWithStateStore(w, encryptionKey, llmConnector, stateStore)
 	if err := manager.LoadSource(params.BrainChainID, js); err != nil {
 		return err
 	}

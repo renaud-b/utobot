@@ -19,6 +19,7 @@ func TestJSONLoaderLoad(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
+		"state_db_path": "./state.sqlite",
 		"llm_key": "sk-test"
 	}`)
 
@@ -41,6 +42,7 @@ func TestJSONLoaderLoad(t *testing.T) {
 		Port:          8081,
 		WalletPath:    "./wallet.json",
 		BrainChainID:  "./brain.js",
+		StateDBPath:   "./state.sqlite",
 		EncryptionKey: params.EncryptionKey,
 		LLMKey:        "sk-test",
 	}
@@ -80,6 +82,7 @@ func TestJSONLoaderLoadKeepsExistingEncryptionKey(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
+		"state_db_path": "./state.sqlite",
 		"encryption_key": "` + encodedKey + `"
 	}`)
 
@@ -106,6 +109,7 @@ func TestJSONLoaderLoadRejectsInvalidEncryptionKey(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
+		"state_db_path": "./state.sqlite",
 		"encryption_key": "AA=="
 	}`)
 
@@ -129,6 +133,7 @@ func TestJSONLoaderLoadRejectsUnknownFields(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
+		"state_db_path": "./state.sqlite",
 		"unexpected": true
 	}`)
 

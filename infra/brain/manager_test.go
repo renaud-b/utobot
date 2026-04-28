@@ -7,14 +7,18 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	walletcrypto "utobot/infra/crypto"
+	"utobot/infra/state"
 )
 
 type fakeLLMConnector struct {
 	prompt string
+	model  string
 	text   string
 	err    error
 }
@@ -25,6 +29,10 @@ func (f *fakeLLMConnector) GenerateText(ctx context.Context, prompt string) (str
 		return "", f.err
 	}
 	return f.text, nil
+}
+
+func (f *fakeLLMConnector) SetModel(model string) {
+	f.model = model
 }
 
 func TestManagerLoadSourceAndInvokeHandler(t *testing.T) {
@@ -98,20 +106,23 @@ func TestManagerAppContextPersistsAcrossInvocations(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain.js", []byte(`
-app.set_context({ counter: 0, tags: [] });
-
 module.exports = {
 	routes: {
 		'POST /state': function state(data) {
-			const ctx = app.get_context();
-			ctx.counter += 1;
-			ctx.tags.push(data.tag);
+			app.state.update(function (ctx) {
+				const counter = (ctx.counter || 0) + 1;
+				const tags = ctx.tags || [];
+				return {
+					counter: counter,
+					tags: tags.concat([data.tag]),
+				};
+			});
 
 			return {
 				status: 200,
 				body: {
-					counter: ctx.counter,
-					tags: app.get_context().tags,
+					counter: app.state.get().counter,
+					tags: app.state.get().tags,
 				}
 			};
 		},
@@ -159,6 +170,199 @@ module.exports = {
 	}
 	if len(tags) != 2 || tags[0] != "one" || tags[1] != "two" {
 		t.Fatalf("unexpected tags: %#v", tags)
+	}
+}
+
+func TestManagerAppContextPersistsAcrossReloadsWithSQLite(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+
+	store1, err := state.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("create state store: %v", err)
+	}
+
+	key, err := walletcrypto.GenerateEncryptionKey()
+	if err != nil {
+		t.Fatalf("GenerateEncryptionKey() error = %v", err)
+	}
+
+	manager1 := NewManagerWithStateStore(walletcrypto.KeyPair{}, key, nil, store1)
+	err = manager1.LoadSource("/brain-v1.js", []byte(`
+module.exports = {
+	routes: {
+		'POST /state': function state(data) {
+			app.state.update(function (ctx) {
+				ctx.counter = (ctx.counter || 0) + 1;
+				return ctx;
+			});
+
+			return {
+				status: 200,
+				body: {
+					counter: app.state.get().counter,
+				}
+			};
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("load first brain: %v", err)
+	}
+
+	firstRoute, _, ok := manager1.Match("POST", "/state")
+	if !ok {
+		t.Fatal("expected first route to be registered")
+	}
+
+	first, err := manager1.InvokeHandler(firstRoute, nil)
+	if err != nil {
+		t.Fatalf("invoke first route: %v", err)
+	}
+	firstBody, ok := first.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected first body type: %T", first.Export().(map[string]any)["body"])
+	}
+	if got := firstBody["counter"]; got != int64(1) {
+		t.Fatalf("unexpected first counter: %#v", got)
+	}
+
+	second, err := manager1.InvokeHandler(firstRoute, nil)
+	if err != nil {
+		t.Fatalf("invoke first route again: %v", err)
+	}
+	secondBody, ok := second.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected second body type: %T", second.Export().(map[string]any)["body"])
+	}
+	if got := secondBody["counter"]; got != int64(2) {
+		t.Fatalf("unexpected second counter: %#v", got)
+	}
+
+	if err := store1.Close(); err != nil {
+		t.Fatalf("close first state store: %v", err)
+	}
+
+	store2, err := state.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("reopen state store: %v", err)
+	}
+	defer store2.Close()
+
+	manager2 := NewManagerWithStateStore(walletcrypto.KeyPair{}, key, nil, store2)
+	err = manager2.LoadSource("/brain-v2.js", []byte(`
+module.exports = {
+	routes: {
+		'GET /state': function state() {
+			return {
+				status: 200,
+				body: {
+					counter: app.state.get().counter,
+				}
+			};
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("load second brain: %v", err)
+	}
+
+	route, _, ok := manager2.Match("GET", "/state")
+	if !ok {
+		t.Fatal("expected second route to be registered")
+	}
+
+	result, err := manager2.InvokeHandler(route, nil)
+	if err != nil {
+		t.Fatalf("invoke second route: %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if got := body["counter"]; got != int64(2) {
+		t.Fatalf("unexpected persisted counter: %#v", got)
+	}
+}
+
+func TestManagerAppStateSupportsParallelUpdates(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, "state.db")
+
+	store, err := state.NewSQLiteStore(dbPath)
+	if err != nil {
+		t.Fatalf("create state store: %v", err)
+	}
+	defer store.Close()
+
+	key, err := walletcrypto.GenerateEncryptionKey()
+	if err != nil {
+		t.Fatalf("GenerateEncryptionKey() error = %v", err)
+	}
+
+	manager := NewManagerWithStateStore(walletcrypto.KeyPair{}, key, nil, store)
+	err = manager.LoadSource("/brain.js", []byte(`
+module.exports = {
+	routes: {
+		'POST /inc': function inc() {
+			app.state.update(function (ctx) {
+				ctx.counter = (ctx.counter || 0) + 1;
+				return ctx;
+			});
+
+			return { status: 200, body: { counter: app.state.get().counter } };
+		},
+		'GET /count': function count() {
+			return { status: 200, body: { counter: app.state.get().counter || 0 } };
+		},
+	},
+};
+`))
+	if err != nil {
+		t.Fatalf("load brain: %v", err)
+	}
+
+	incRoute, _, ok := manager.Match("POST", "/inc")
+	if !ok {
+		t.Fatal("expected increment route to be registered")
+	}
+	countRoute, _, ok := manager.Match("GET", "/count")
+	if !ok {
+		t.Fatal("expected count route to be registered")
+	}
+
+	const workers = 20
+	var wg sync.WaitGroup
+	errs := make(chan error, workers)
+	for i := 0; i < workers; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if _, err := manager.InvokeHandler(incRoute, nil); err != nil {
+				errs <- err
+			}
+		}()
+	}
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		t.Fatalf("parallel increment failed: %v", err)
+	}
+
+	result, err := manager.InvokeHandler(countRoute, nil)
+	if err != nil {
+		t.Fatalf("invoke count route: %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if got := body["counter"]; got != int64(workers) {
+		t.Fatalf("unexpected parallel counter: %#v", got)
 	}
 }
 
@@ -277,10 +481,11 @@ func TestManagerAutonomousLoopRunsConfiguredFunction(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain.js", []byte(`
-let counter = 0;
-
 app.configure_loop(5, function autonomousTick() {
-	counter += 1;
+	app.state.update(function (ctx) {
+		ctx.counter = (ctx.counter || 0) + 1;
+		return ctx;
+	});
 });
 
 module.exports = {
@@ -288,7 +493,7 @@ module.exports = {
 		'GET /counter': function counterRoute() {
 			return {
 				status: 200,
-				body: { counter: counter },
+				body: { counter: app.state.get().counter },
 			};
 		},
 	},
@@ -329,16 +534,17 @@ func TestManagerAutonomousLoopIsReplacedOnReload(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain-v1.js", []byte(`
-let counter = 0;
-
 app.configure_loop(5, function autonomousTick() {
-	counter += 1;
+	app.state.update(function (ctx) {
+		ctx.counter = (ctx.counter || 0) + 1;
+		return ctx;
+	});
 });
 
 module.exports = {
 	routes: {
 		'GET /counter': function counterRoute() {
-			return { status: 200, body: { version: 1, counter: counter } };
+			return { status: 200, body: { version: 1, counter: app.state.get().counter } };
 		},
 	},
 };
@@ -354,12 +560,10 @@ module.exports = {
 	waitForCounter(t, manager, firstRoute, 1)
 
 	err = manager.LoadSource("/brain-v2.js", []byte(`
-let counter = 0;
-
 module.exports = {
 	routes: {
 		'GET /counter': function counterRoute() {
-			return { status: 200, body: { version: 2, counter: counter } };
+			return { status: 200, body: { version: 2, counter: app.state.get().counter } };
 		},
 	},
 };
@@ -386,8 +590,8 @@ module.exports = {
 	if got := body["version"]; got != int64(2) {
 		t.Fatalf("unexpected brain version: %#v", got)
 	}
-	if got := body["counter"]; got != int64(0) {
-		t.Fatalf("expected second brain without loop to keep counter at 0, got %#v", got)
+	if got := body["counter"]; got != int64(2) {
+		t.Fatalf("expected second brain without loop to preserve counter at 2, got %#v", got)
 	}
 }
 

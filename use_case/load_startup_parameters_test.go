@@ -23,6 +23,7 @@ func TestLoadStartupParametersExecuteUsesLoaderResult(t *testing.T) {
 			Port:         8081,
 			WalletPath:   "./wallet.json",
 			BrainChainID: "./brain.js",
+			StateDBPath:  "./state.sqlite",
 		},
 	}
 
@@ -44,6 +45,7 @@ func TestLoadStartupParametersExecuteOverridesBrainPath(t *testing.T) {
 			Port:         8081,
 			WalletPath:   "./wallet.json",
 			BrainChainID: "./brain.js",
+			StateDBPath:  "./state.sqlite",
 		},
 	}
 

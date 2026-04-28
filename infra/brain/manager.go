@@ -2,6 +2,7 @@ package brain
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"sync"
 	"time"
 	"utobot/infra/crypto"
+	"utobot/infra/state"
 
 	"github.com/dop251/goja"
 	"github.com/dop251/goja_nodejs/require"
@@ -32,11 +34,13 @@ type JsManager struct {
 	wallet     crypto.KeyPair
 	cipherKey  []byte
 	llm        LLMConnector
-	runtime    *goja.Runtime
+	stateStore state.ContextStore
+	source     []byte
 	routes     map[string]Route
 	path       string
 	loopCancel context.CancelFunc
 	loopDone   chan struct{}
+	generation uint64
 }
 
 type LLMConnector interface {
@@ -60,17 +64,24 @@ func NewManager(wallet ...crypto.KeyPair) Manager {
 		slog.Warn("failed to generate transient brain encryption key", "error", err)
 	}
 
-	return &JsManager{wallet: keyPair, cipherKey: cipherKey}
+	return &JsManager{wallet: keyPair, cipherKey: cipherKey, stateStore: state.NewMemoryStore()}
 }
 
 func NewManagerWithEncryption(wallet crypto.KeyPair, cipherKey []byte) Manager {
 	keyCopy := append([]byte(nil), cipherKey...)
-	return &JsManager{wallet: wallet, cipherKey: keyCopy}
+	return &JsManager{wallet: wallet, cipherKey: keyCopy, stateStore: state.NewMemoryStore()}
 }
 
 func NewManagerWithEncryptionAndLLM(wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector) Manager {
+	return NewManagerWithStateStore(wallet, cipherKey, llm, nil)
+}
+
+func NewManagerWithStateStore(wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector, stateStore state.ContextStore) Manager {
 	keyCopy := append([]byte(nil), cipherKey...)
-	return &JsManager{wallet: wallet, cipherKey: keyCopy, llm: llm}
+	if stateStore == nil {
+		stateStore = state.NewMemoryStore()
+	}
+	return &JsManager{wallet: wallet, cipherKey: keyCopy, llm: llm, stateStore: stateStore}
 }
 
 func (m *JsManager) LoadSource(path string, source []byte) error {
@@ -81,7 +92,29 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 	m.stopAutonomousLoop()
 
 	cleanPath := filepath.Clean(path)
+	sourceCopy := append([]byte(nil), source...)
 
+	_, routes, loop, err := m.instantiateRuntime(sourceCopy)
+	if err != nil {
+		return err
+	}
+
+	m.mu.Lock()
+	m.source = sourceCopy
+	m.routes = routes
+	m.path = cleanPath
+	m.generation++
+	generation := m.generation
+	m.mu.Unlock()
+
+	if loop != nil {
+		m.startAutonomousLoop(cleanPath, generation, loop)
+	}
+
+	return nil
+}
+
+func (m *JsManager) instantiateRuntime(source []byte) (*goja.Runtime, map[string]Route, *autonomousLoop, error) {
 	runtime := goja.New()
 	var loop *autonomousLoop
 
@@ -92,45 +125,45 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 	exports := runtime.NewObject()
 
 	if err := module.Set("exports", exports); err != nil {
-		return fmt.Errorf("create module.exports: %w", err)
+		return nil, nil, nil, fmt.Errorf("create module.exports: %w", err)
 	}
 	if err := runtime.Set("module", module); err != nil {
-		return fmt.Errorf("set module: %w", err)
+		return nil, nil, nil, fmt.Errorf("set module: %w", err)
 	}
 	if err := runtime.Set("exports", exports); err != nil {
-		return fmt.Errorf("set exports: %w", err)
+		return nil, nil, nil, fmt.Errorf("set exports: %w", err)
 	}
 	if err := bindConsole(runtime); err != nil {
-		return fmt.Errorf("bind console: %w", err)
+		return nil, nil, nil, fmt.Errorf("bind console: %w", err)
 	}
 	if err := bindFetch(runtime); err != nil {
-		return fmt.Errorf("bind fetch: %w", err)
+		return nil, nil, nil, fmt.Errorf("bind fetch: %w", err)
 	}
-	if err := bindApp(runtime, m.wallet, m.cipherKey, m.llm, &loop); err != nil {
-		return fmt.Errorf("bind app: %w", err)
+	if err := bindApp(runtime, m.wallet, m.cipherKey, m.llm, m.stateStore, &loop); err != nil {
+		return nil, nil, nil, fmt.Errorf("bind app: %w", err)
 	}
 
-	if _, err := runtime.RunScript(cleanPath, string(source)); err != nil {
-		return fmt.Errorf("load brain %s: %w", cleanPath, err)
+	if _, err := runtime.RunScript("brain.js", string(source)); err != nil {
+		return nil, nil, nil, fmt.Errorf("load brain: %w", err)
 	}
 
 	moduleVal := runtime.Get("module")
 	if moduleVal == nil || goja.IsUndefined(moduleVal) || goja.IsNull(moduleVal) {
-		return fmt.Errorf("brain %s did not define module", cleanPath)
+		return nil, nil, nil, fmt.Errorf("brain did not define module")
 	}
 
 	moduleObj := moduleVal.ToObject(runtime)
 	exportsVal := moduleObj.Get("exports")
 
 	if exportsVal == nil || goja.IsUndefined(exportsVal) || goja.IsNull(exportsVal) {
-		return fmt.Errorf("brain %s does not export anything", cleanPath)
+		return nil, nil, nil, fmt.Errorf("brain does not export anything")
 	}
 
 	exportsObj := exportsVal.ToObject(runtime)
 	routesVal := exportsObj.Get("routes")
 
 	if routesVal == nil || goja.IsUndefined(routesVal) || goja.IsNull(routesVal) {
-		return fmt.Errorf("brain %s does not export routes", cleanPath)
+		return nil, nil, nil, fmt.Errorf("brain does not export routes")
 	}
 
 	routesObj := routesVal.ToObject(runtime)
@@ -141,22 +174,22 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 
 		fn, ok := goja.AssertFunction(value)
 		if !ok {
-			return fmt.Errorf("route %q is not a function", key)
+			return nil, nil, nil, fmt.Errorf("route %q is not a function", key)
 		}
 
 		parts := strings.SplitN(key, " ", 2)
 		if len(parts) != 2 {
-			return fmt.Errorf("invalid route format %q, expected 'METHOD /path'", key)
+			return nil, nil, nil, fmt.Errorf("invalid route format %q, expected 'METHOD /path'", key)
 		}
 
 		method := strings.ToUpper(strings.TrimSpace(parts[0]))
 		routePath := strings.TrimSpace(parts[1])
 
 		if method == "" {
-			return fmt.Errorf("route %q has empty method", key)
+			return nil, nil, nil, fmt.Errorf("route %q has empty method", key)
 		}
 		if routePath == "" || !strings.HasPrefix(routePath, "/") {
-			return fmt.Errorf("route %q has invalid path", key)
+			return nil, nil, nil, fmt.Errorf("route %q has invalid path", key)
 		}
 
 		routeKey := method + " " + routePath
@@ -168,17 +201,7 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 		}
 	}
 
-	m.mu.Lock()
-	m.runtime = runtime
-	m.routes = routes
-	m.path = cleanPath
-	m.mu.Unlock()
-
-	if loop != nil {
-		m.startAutonomousLoop(cleanPath, runtime, loop)
-	}
-
-	return nil
+	return runtime, routes, loop, nil
 }
 
 func (m *JsManager) Routes() map[string]Route {
@@ -217,18 +240,43 @@ func (m *JsManager) Match(method, path string) (Route, map[string]string, bool) 
 }
 
 func (m *JsManager) InvokeHandler(route Route, data any) (goja.Value, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	m.mu.RLock()
+	source := append([]byte(nil), m.source...)
+	m.mu.RUnlock()
 
-	if m.runtime == nil {
+	if len(source) == 0 {
 		return nil, fmt.Errorf("brain runtime is not initialized")
 	}
 
-	// Convert Go → JS
-	jsData := m.runtime.ToValue(data)
+	return m.invokeRouteOnSource(source, route, data)
+}
 
-	// Call JS handler
-	result, err := route.Handler(goja.Undefined(), jsData)
+func (m *JsManager) invokeRouteOnSource(source []byte, route Route, data any) (goja.Value, error) {
+	runtime, _, _, err := m.instantiateRuntime(source)
+	if err != nil {
+		return nil, err
+	}
+
+	jsData := runtime.ToValue(data)
+
+	routesVal := runtime.Get("module").ToObject(runtime).Get("exports")
+	if routesVal == nil || goja.IsUndefined(routesVal) || goja.IsNull(routesVal) {
+		return nil, fmt.Errorf("brain does not export anything")
+	}
+
+	routesObj := routesVal.ToObject(runtime).Get("routes")
+	if routesObj == nil || goja.IsUndefined(routesObj) || goja.IsNull(routesObj) {
+		return nil, fmt.Errorf("brain does not export routes")
+	}
+
+	routeObj := routesObj.ToObject(runtime)
+	handlerVal := routeObj.Get(route.Method + " " + route.Path)
+	handler, ok := goja.AssertFunction(handlerVal)
+	if !ok {
+		return nil, fmt.Errorf("route %s %s is not a function", route.Method, route.Path)
+	}
+
+	result, err := handler(goja.Undefined(), jsData)
 	if err != nil {
 		return nil, fmt.Errorf("invoke handler %s %s: %w", route.Method, route.Path, err)
 	}
@@ -243,7 +291,7 @@ func (m *JsManager) Path() string {
 	return m.path
 }
 
-func (m *JsManager) startAutonomousLoop(path string, runtime *goja.Runtime, loop *autonomousLoop) {
+func (m *JsManager) startAutonomousLoop(path string, generation uint64, loop *autonomousLoop) {
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
 
@@ -263,14 +311,14 @@ func (m *JsManager) startAutonomousLoop(path string, runtime *goja.Runtime, loop
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				m.mu.Lock()
-				if ctx.Err() != nil || m.runtime != runtime {
-					m.mu.Unlock()
+				m.mu.RLock()
+				currentGeneration := m.generation
+				m.mu.RUnlock()
+				if ctx.Err() != nil || currentGeneration != generation {
 					return
 				}
 
 				_, err := loop.fn(goja.Undefined())
-				m.mu.Unlock()
 
 				if err != nil {
 					slog.Warn("autonomous brain loop failed", "brain_path", path, "error", err)
@@ -324,40 +372,133 @@ func bindConsole(runtime *goja.Runtime) error {
 	return runtime.Set("console", console)
 }
 
-func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector, loop **autonomousLoop) error {
+func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector, stateStore state.ContextStore, loop **autonomousLoop) error {
 	app := runtime.NewObject()
-	var contextValue goja.Value = runtime.NewObject()
+	contextValue, err := loadContextValue(runtime, stateStore)
+	if err != nil {
+		return err
+	}
+
+	persistContext := func(value goja.Value) error {
+		if stateStore == nil {
+			return nil
+		}
+
+		encoded, err := json.Marshal(value.Export())
+		if err != nil {
+			return fmt.Errorf("encode brain context: %w", err)
+		}
+
+		return stateStore.SaveContext(encoded)
+	}
+
+	decodeStoredContext := func(raw []byte) (goja.Value, error) {
+		value, err := decodeContextValue(runtime, raw)
+		if err != nil {
+			return nil, err
+		}
+		return value, nil
+	}
+
+	stateObj := runtime.NewObject()
+
+	getContext := func(goja.FunctionCall) goja.Value {
+		return contextValue
+	}
+
+	setContext := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) == 0 {
+			contextValue = runtime.NewObject()
+		} else {
+			contextValue = call.Argument(0)
+		}
+
+		if err := persistContext(contextValue); err != nil {
+			panic(runtime.NewGoError(err))
+		}
+
+		return contextValue
+	}
+
+	updateContext := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("update_context requires a function"))
+		}
+
+		updater, ok := goja.AssertFunction(call.Argument(0))
+		if !ok {
+			panic(runtime.NewTypeError("update_context function must be callable"))
+		}
+
+		runUpdate := func(raw []byte) (goja.Value, error) {
+			current, err := decodeStoredContext(raw)
+			if err != nil {
+				return nil, err
+			}
+
+			next, err := updater(goja.Undefined(), current)
+			if err != nil {
+				return nil, err
+			}
+			if goja.IsUndefined(next) || goja.IsNull(next) {
+				next = current
+			}
+			return next, nil
+		}
+
+		if stateStore == nil {
+			next, err := runUpdate(nil)
+			if err != nil {
+				panic(runtime.NewGoError(err))
+			}
+			contextValue = next
+			return contextValue
+		}
+
+		var nextValue goja.Value
+		err := stateStore.UpdateContext(func(raw []byte) ([]byte, error) {
+			next, err := runUpdate(raw)
+			if err != nil {
+				return nil, err
+			}
+			nextValue = next
+			encoded, err := json.Marshal(next.Export())
+			if err != nil {
+				return nil, fmt.Errorf("encode brain context: %w", err)
+			}
+			return encoded, nil
+		})
+		if err != nil {
+			panic(runtime.NewGoError(err))
+		}
+		contextValue = nextValue
+		return contextValue
+	}
+
+	if err := stateObj.Set("get", getContext); err != nil {
+		return err
+	}
+	if err := stateObj.Set("set", setContext); err != nil {
+		return err
+	}
+	if err := stateObj.Set("update", updateContext); err != nil {
+		return err
+	}
 
 	/*
 		stateChainAddr := "state@" + wallet.Address
 		client := network.NewHttpClient("https://metapixia.com")
 	*/
-	if err := app.Set("get_context", func(goja.FunctionCall) goja.Value {
-		/*
-			g, err := client.GetLastState(stateChainAddr)
-			if err != nil {
-				slog.Warn("failed to fetch last state for context", "error", err)
-				return contextValue
-			}
-
-			contextValue = runtime.ToValue(g)
-
-		*/
-		return contextValue
-	}); err != nil {
+	if err := app.Set("state", stateObj); err != nil {
 		return err
 	}
-
-	if err := app.Set("set_context", func(call goja.FunctionCall) goja.Value {
-		if len(call.Arguments) == 0 {
-			contextValue = runtime.NewObject()
-			return contextValue
-		}
-
-		contextValue = call.Argument(0)
-
-		return contextValue
-	}); err != nil {
+	if err := app.Set("get_context", getContext); err != nil {
+		return err
+	}
+	if err := app.Set("set_context", setContext); err != nil {
+		return err
+	}
+	if err := app.Set("update_context", updateContext); err != nil {
 		return err
 	}
 
@@ -451,7 +592,53 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return err
 	}
 
-	return runtime.Set("app", app)
+	if err := runtime.Set("app", app); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func loadContextValue(runtime *goja.Runtime, stateStore state.ContextStore) (goja.Value, error) {
+	if stateStore == nil {
+		return runtime.NewObject(), nil
+	}
+
+	data, ok, err := stateStore.LoadContext()
+	if err != nil {
+		return nil, err
+	}
+	if !ok || len(data) == 0 {
+		return runtime.NewObject(), nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		return nil, fmt.Errorf("decode persisted brain context: %w", err)
+	}
+
+	if decoded == nil {
+		return runtime.NewObject(), nil
+	}
+
+	return runtime.ToValue(decoded), nil
+}
+
+func decodeContextValue(runtime *goja.Runtime, raw []byte) (goja.Value, error) {
+	if len(raw) == 0 {
+		return runtime.NewObject(), nil
+	}
+
+	var decoded any
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		return nil, fmt.Errorf("decode persisted brain context: %w", err)
+	}
+
+	if decoded == nil {
+		return runtime.NewObject(), nil
+	}
+
+	return runtime.ToValue(decoded), nil
 }
 
 func matchRoutePattern(pattern, path string) (map[string]string, bool) {

@@ -9,6 +9,7 @@ func TestParametersValidate(t *testing.T) {
 			Port:         8081,
 			WalletPath:   "./wallet.json",
 			BrainChainID: "./brain.js",
+			StateDBPath:  "./state.sqlite",
 		}
 
 		if err := params.Validate(); err != nil {
@@ -21,6 +22,7 @@ func TestParametersValidate(t *testing.T) {
 			HTTPAddress: "127.0.0.1:8080",
 			Port:        8081,
 			WalletPath:  "./wallet.json",
+			StateDBPath: "./state.sqlite",
 		}
 
 		if err := params.Validate(); err == nil {
@@ -33,6 +35,7 @@ func TestParametersValidate(t *testing.T) {
 			HTTPAddress:  "127.0.0.1:8080",
 			WalletPath:   "./wallet.json",
 			BrainChainID: "./brain.js",
+			StateDBPath:  "./state.sqlite",
 		}
 
 		if err := params.Validate(); err == nil {
