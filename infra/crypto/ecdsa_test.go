@@ -1,7 +1,11 @@
 package crypto
 
 import (
+	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/sha256"
+	"encoding/hex"
+	"math/big"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -47,6 +51,33 @@ func TestSignMessage(t *testing.T) {
 	}
 }
 
+func TestVerifyCompactSignature(t *testing.T) {
+	kp, err := GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+
+	sum := sha256.Sum256([]byte("utobot"))
+	privateKey, err := privateKeyFromHex(kp.PrivateKeyHex)
+	if err != nil {
+		t.Fatalf("privateKeyFromHex() error = %v", err)
+	}
+
+	r, s, err := ecdsa.Sign(rand.Reader, privateKey, sum[:])
+	if err != nil {
+		t.Fatalf("ecdsa.Sign() error = %v", err)
+	}
+
+	signature := compactSignatureHex(r, s)
+	ok, err := VerifySignature(kp.PublicKeyHex, hexString(sum[:]), signature)
+	if err != nil {
+		t.Fatalf("VerifySignature() error = %v", err)
+	}
+	if !ok {
+		t.Fatal("expected compact signature to verify")
+	}
+}
+
 func TestSaveAndLoadWalletFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "wallet.json")
@@ -87,4 +118,15 @@ func hexString(bytes []byte) string {
 		out[i*2+1] = table[b&0x0f]
 	}
 	return string(out)
+}
+
+func compactSignatureHex(r, s *big.Int) string {
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+
+	padded := make([]byte, 64)
+	copy(padded[32-len(rBytes):32], rBytes)
+	copy(padded[64-len(sBytes):], sBytes)
+
+	return hex.EncodeToString(padded)
 }

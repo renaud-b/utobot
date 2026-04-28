@@ -138,7 +138,7 @@ The runtime also exposes `console` plus the following globals:
 | `app.md5(text)`                                                   | Get the MD5 hash of a string |
 | `fetch(url, init)`                                                | Synchronous HTTP fetch with the configured timeout and JSON body support |
 | `crypto.encrypt(plaintext)`, `crypto.decrypt(payload)`          | AES-256-GCM encrypt/decrypt with the configured key |
-| `crypto.verify_ecdsa_signature(publicKeyHex, messageHashHex, signatureHex)` | Verify an ASN.1 ECDSA signature over a hex-encoded hash |
+| `crypto.verify_ecdsa_signature(publicKeyHex, messageHashHex, signatureHex)` | Verify an ECDSA signature over a hex-encoded hash; accepts compact `r||s` hex and ASN.1 DER |
 | `crypto.derive_address(publicKeyHex)`                           | Derive the bot address from a hex-encoded public key |
 | `llm.ask(prompt)`                                               | Generate text with the configured OpenAI connector |
 

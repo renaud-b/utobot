@@ -127,7 +127,25 @@ func VerifySignature(publicKeyHex string, messageHashHex string, signatureHex st
 		return false, fmt.Errorf("decode signature: %w", err)
 	}
 
+	if len(signature) == 64 {
+		return verifyCompactSignature(publicKey, hashBytes, signature)
+	}
+
 	return ecdsa.VerifyASN1(publicKey, hashBytes, signature), nil
+}
+
+func verifyCompactSignature(publicKey *ecdsa.PublicKey, hashBytes []byte, signature []byte) (bool, error) {
+	if len(signature) != 64 {
+		return false, fmt.Errorf("compact signature must be 64 bytes")
+	}
+
+	r := new(big.Int).SetBytes(signature[:32])
+	s := new(big.Int).SetBytes(signature[32:])
+	if r.Sign() <= 0 || s.Sign() <= 0 {
+		return false, nil
+	}
+
+	return ecdsa.Verify(publicKey, hashBytes, r, s), nil
 }
 
 func DeriveAddress(publicKeyHex string) string {

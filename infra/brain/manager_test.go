@@ -3,10 +3,12 @@ package brain
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/asn1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -672,9 +674,13 @@ func TestManagerCryptoVerifySignatureAndDeriveAddress(t *testing.T) {
 
 	messageHash := sha256.Sum256([]byte("signed message"))
 	messageHashHex := hex.EncodeToString(messageHash[:])
-	signatureHex, err := walletcrypto.SignMessage(kp.PrivateKeyHex, messageHashHex)
+	signatureDERHex, err := walletcrypto.SignMessage(kp.PrivateKeyHex, messageHashHex)
 	if err != nil {
 		t.Fatalf("SignMessage() error = %v", err)
+	}
+	signatureHex, err := derSignatureToCompactHex(signatureDERHex)
+	if err != nil {
+		t.Fatalf("derSignatureToCompactHex() error = %v", err)
 	}
 
 	manager := NewManagerWithEncryption(walletcrypto.KeyPair{}, mustGenerateEncryptionKey(t))
@@ -804,6 +810,36 @@ func mustGenerateEncryptionKey(t *testing.T) []byte {
 		t.Fatalf("GenerateEncryptionKey() error = %v", err)
 	}
 	return key
+}
+
+func compactSignatureHex(r, s *big.Int) string {
+	rBytes := r.Bytes()
+	sBytes := s.Bytes()
+
+	padded := make([]byte, 64)
+	copy(padded[32-len(rBytes):32], rBytes)
+	copy(padded[64-len(sBytes):], sBytes)
+
+	return hex.EncodeToString(padded)
+}
+
+func derSignatureToCompactHex(signatureDERHex string) (string, error) {
+	signatureDER, err := hex.DecodeString(signatureDERHex)
+	if err != nil {
+		return "", err
+	}
+
+	var parsed struct {
+		R, S *big.Int
+	}
+	if _, err := asn1.Unmarshal(signatureDER, &parsed); err != nil {
+		return "", err
+	}
+	if parsed.R == nil || parsed.S == nil {
+		return "", fmt.Errorf("invalid der signature")
+	}
+
+	return compactSignatureHex(parsed.R, parsed.S), nil
 }
 
 func waitForCounter(t *testing.T, manager Manager, route Route, minimum int64) {
