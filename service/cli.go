@@ -73,11 +73,17 @@ func Run(args []string) error {
 		slog.Info("llm connector configured", "provider", "openai")
 	}
 
-	stateStore, err := state.NewSQLiteStore(params.StateDBPath)
-	if err != nil {
-		return err
+	var stateStore state.ContextStore = state.NewMemoryStore()
+	if params.StateDBPath != "" {
+		stateStore, err = state.NewSQLiteStore(params.StateDBPath)
+		if err != nil {
+			return err
+		}
+		defer stateStore.Close()
+		slog.Info("state store configured", "backend", "sqlite", "path", params.StateDBPath)
+	} else {
+		slog.Info("state store configured", "backend", "memory")
 	}
-	defer stateStore.Close()
 
 	manager := brain.NewManagerWithStateStore(w, encryptionKey, llmConnector, stateStore)
 	if err := manager.LoadSource(params.BrainChainID, js); err != nil {

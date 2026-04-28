@@ -26,8 +26,5 @@ func (p Parameters) Validate() error {
 	if p.BrainChainID == "" {
 		return fmt.Errorf("brain_path is required")
 	}
-	if p.StateDBPath == "" {
-		return fmt.Errorf("state_db_path is required")
-	}
 	return nil
 }

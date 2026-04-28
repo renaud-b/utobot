@@ -56,10 +56,10 @@ The config loader expects a flat JSON object with these fields.
 | `port` | yes | Port used by the local HTTP server |
 | `wallet_path` | yes | Required by startup validation; currently kept in the loaded parameters |
 | `brain_chain_id` | yes | Chain id used to fetch the JavaScript brain |
-| `state_db_path` | yes | SQLite file used to persist the bot state |
+| `state_db_path` | no | SQLite file used to persist the bot state; if omitted, state stays in memory |
 | `script_height_path` | no | File used by the reload worker to remember the last seen height |
 | `encryption_key` | no | Base64-encoded 32-byte AES-256-GCM key; generated and saved on first load when absent |
-| `llm_key` | no | OpenAI API key used by the LLM connector |
+| `llm_key` | no | OpenAI API key used by the LLM connector; if omitted, `llm.ask()` is unavailable |
 
 Example:
 
@@ -69,7 +69,6 @@ Example:
   "port": 8081,
   "wallet_path": "./wallet.json",
   "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
-  "state_db_path": "./.utobot.state.sqlite",
   "script_height_path": "./.utobot.script-height.json",
   "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
   "llm_key": "sk-your-openai-api-key"
@@ -77,6 +76,7 @@ Example:
 ```
 
 If `script_height_path` is empty, the reload worker falls back to `.utobot.script-height.json`.
+If `state_db_path` is empty or omitted, Utobot keeps state in memory instead of SQLite.
 
 ## JavaScript Brain
 

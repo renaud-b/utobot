@@ -19,7 +19,6 @@ func TestJSONLoaderLoad(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
-		"state_db_path": "./state.sqlite",
 		"llm_key": "sk-test"
 	}`)
 
@@ -42,7 +41,6 @@ func TestJSONLoaderLoad(t *testing.T) {
 		Port:          8081,
 		WalletPath:    "./wallet.json",
 		BrainChainID:  "./brain.js",
-		StateDBPath:   "./state.sqlite",
 		EncryptionKey: params.EncryptionKey,
 		LLMKey:        "sk-test",
 	}
@@ -64,6 +62,32 @@ func TestJSONLoaderLoad(t *testing.T) {
 	}
 }
 
+func TestJSONLoaderLoadAllowsMissingStateDBPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	content := []byte(`{
+		"http_address": "127.0.0.1:8080",
+		"port": 8081,
+		"wallet_path": "./wallet.json",
+		"brain_chain_id": "./brain.js"
+	}`)
+
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	loader := NewJSONLoader()
+	params, err := loader.Load(path)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if params.StateDBPath != "" {
+		t.Fatalf("unexpected state db path: %q", params.StateDBPath)
+	}
+}
+
 func TestJSONLoaderLoadKeepsExistingEncryptionKey(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
@@ -82,7 +106,6 @@ func TestJSONLoaderLoadKeepsExistingEncryptionKey(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
-		"state_db_path": "./state.sqlite",
 		"encryption_key": "` + encodedKey + `"
 	}`)
 
@@ -109,7 +132,6 @@ func TestJSONLoaderLoadRejectsInvalidEncryptionKey(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
-		"state_db_path": "./state.sqlite",
 		"encryption_key": "AA=="
 	}`)
 
@@ -133,7 +155,6 @@ func TestJSONLoaderLoadRejectsUnknownFields(t *testing.T) {
 		"port": 8081,
 		"wallet_path": "./wallet.json",
 		"brain_chain_id": "./brain.js",
-		"state_db_path": "./state.sqlite",
 		"unexpected": true
 	}`)
 
