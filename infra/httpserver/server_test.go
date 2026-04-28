@@ -115,6 +115,10 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 		t.Fatalf("unexpected request id payload: %#v", got)
 	}
 
+	if got := payload["form"]; got != nil {
+		t.Fatalf("expected nil form payload for JSON request, got: %#v", got)
+	}
+
 	jsonBody, ok := payload["json"].(map[string]any)
 	if !ok {
 		t.Fatalf("unexpected json payload type: %T", payload["json"])
@@ -133,6 +137,55 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 	}
 	if body != "Hello, Codex!" {
 		t.Fatalf("unexpected response message: %#v", body)
+	}
+}
+
+func TestServerParsesFormUrlencodedPayload(t *testing.T) {
+	rt := goja.New()
+	manager := &fakeBrainManager{
+		hasRoute: true,
+		route: brain.Route{
+			Method: http.MethodPost,
+			Path:   "/contact",
+		},
+		result: rt.ToValue(map[string]any{
+			"status": 200,
+			"body":   "ok",
+		}),
+	}
+
+	server := New(8081, manager)
+	req := httptest.NewRequest(http.MethodPost, "http://example.com/contact", strings.NewReader("name=Codex&email=codex%40example.com&tag=a&tag=b"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded;charset=UTF-8")
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("unexpected status: got %d want %d", rr.Code, http.StatusOK)
+	}
+
+	payload, ok := manager.payload.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected payload type: %T", manager.payload)
+	}
+
+	form, ok := payload["form"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected form payload type: %T", payload["form"])
+	}
+	if got := form["name"]; got != "Codex" {
+		t.Fatalf("unexpected form name: %#v", got)
+	}
+	if got := form["email"]; got != "codex@example.com" {
+		t.Fatalf("unexpected form email: %#v", got)
+	}
+	tags, ok := form["tag"].([]string)
+	if !ok {
+		t.Fatalf("unexpected form tag type: %T", form["tag"])
+	}
+	if len(tags) != 2 || tags[0] != "a" || tags[1] != "b" {
+		t.Fatalf("unexpected form tags: %#v", tags)
 	}
 }
 

@@ -6,7 +6,9 @@ import (
 	"html/template"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -92,6 +94,8 @@ func buildRequestPayload(r *http.Request, params map[string]string) (map[string]
 		}
 	}
 
+	form := parseFormPayload(r.Header.Get("Content-Type"), body)
+
 	query := make(map[string]string, len(r.URL.Query()))
 	for key, values := range r.URL.Query() {
 		if len(values) > 0 {
@@ -114,9 +118,46 @@ func buildRequestPayload(r *http.Request, params map[string]string) (map[string]
 		"headers":    headers,
 		"body":       string(body),
 		"json":       parsedJSON,
+		"form":       form,
 		"remoteAddr": r.RemoteAddr,
 		"requestId":  r.Header.Get("X-Request-Id"),
 	}, nil
+}
+
+func parseFormPayload(contentType string, body []byte) any {
+	if len(body) == 0 {
+		return nil
+	}
+
+	mediaType, _, err := mime.ParseMediaType(contentType)
+	if err != nil {
+		return nil
+	}
+
+	if mediaType != "application/x-www-form-urlencoded" {
+		return nil
+	}
+
+	values, err := url.ParseQuery(string(body))
+	if err != nil {
+		return nil
+	}
+
+	form := make(map[string]any, len(values))
+	for key, vals := range values {
+		switch len(vals) {
+		case 0:
+			form[key] = ""
+		case 1:
+			form[key] = vals[0]
+		default:
+			items := make([]string, len(vals))
+			copy(items, vals)
+			form[key] = items
+		}
+	}
+
+	return form
 }
 
 func (s *Server) handleCORSPreflight(w http.ResponseWriter, r *http.Request) (bool, error) {

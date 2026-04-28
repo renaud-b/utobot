@@ -120,6 +120,7 @@ Each handler receives one argument: a request payload built by Go. It looks like
   },
   body: "...raw body...",
   json: { /* parsed JSON or null */ },
+  form: { /* parsed urlencoded form fields or null */ },
   remoteAddr: "127.0.0.1:53012",
   requestId: "..."
 }
