@@ -1,0 +1,14 @@
+.git
+.gitignore
+.dockerignore
+Dockerfile
+
+*.test
+coverage.out
+
+cmake-build-*
+build
+build-coverage
+
+.utobot.script-height.json
+wallet.json

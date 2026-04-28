@@ -18,6 +18,26 @@ Example:
 go run . ./config.json AZ3BXaotezKx2AioD3gGvA --debug
 ```
 
+## Docker
+
+Build the container image:
+
+```bash
+docker build -t utobot .
+```
+
+Run it with a mounted config and wallet directory:
+
+```bash
+docker run --rm \
+  -p 8081:8081 \
+  -v "$PWD/config.json:/etc/utobot/config.json" \
+  -v "$PWD/wallets:/wallets" \
+  utobot
+```
+
+The image runs `utobot /etc/utobot/config.json` by default. Pass another config path, chain id override, or `--debug` as container arguments when needed.
+
 ## Config
 
 The config loader expects a flat JSON object with these fields.
