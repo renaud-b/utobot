@@ -9,7 +9,7 @@ services:
     volumes:
       - ./config.json:/opt/utobot/config.json:rw
       - ${UTOBOT_WALLET_FILE:-./wallet.utx}:/opt/utobot/wallet.utx:ro
-      - ${UTOBOT_SQLITE_FILE:-./utobot.state.sqlite}:/opt/utobot/utobot.state.sqlite:ro
+      - ${UTOBOT_SQLITE_FILE:-./utobot.state.sqlite}:/opt/utobot/utobot.state.sqlite
     ports:
       - "9000:9000"
     labels:
