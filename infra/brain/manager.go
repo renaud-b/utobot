@@ -633,7 +633,7 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 		sum := sha256.Sum256([]byte(call.Argument(1).String()))
 		hexHash := hexString(sum[:])
 
-		ok, err := crypto.VerifyCompactSignature(
+		ok, err := crypto.VerifySignature(
 			call.Argument(0).String(),
 			hexHash,
 			call.Argument(2).String(),
