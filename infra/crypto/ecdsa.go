@@ -117,7 +117,10 @@ func VerifySignature(publicKeyHex string, messageHashHex string, signatureHex st
 		return false, err
 	}
 
-	hashBytes, err := decodeHex(messageHashHex)
+	messageHashHexHash := sha256.Sum256([]byte(messageHashHex))
+	messageHash := hex.EncodeToString(messageHashHexHash[:])
+
+	hashBytes, err := decodeHex(messageHash)
 	if err != nil {
 		return false, fmt.Errorf("decode message hash: %w", err)
 	}
