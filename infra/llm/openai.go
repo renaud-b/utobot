@@ -72,6 +72,10 @@ func WithHTTPClient(client *http.Client) OpenAIOption {
 	}
 }
 
+func (c *OpenAIConnector) SetModel(model string) {
+	c.model = model
+}
+
 func (c *OpenAIConnector) GenerateText(ctx context.Context, prompt string) (string, error) {
 	if strings.TrimSpace(prompt) == "" {
 		return "", fmt.Errorf("prompt is required")

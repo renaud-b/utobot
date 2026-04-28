@@ -41,6 +41,7 @@ type JsManager struct {
 
 type LLMConnector interface {
 	GenerateText(ctx context.Context, prompt string) (string, error)
+	SetModel(model string)
 }
 
 type autonomousLoop struct {
@@ -430,6 +431,13 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cancel()
+
+		if len(call.Arguments) >= 2 {
+			model := call.Argument(1).String()
+			if model != "" {
+				llm.SetModel(model)
+			}
+		}
 
 		text, err := llm.GenerateText(ctx, call.Argument(0).String())
 		if err != nil {
