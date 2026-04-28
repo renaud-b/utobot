@@ -135,6 +135,7 @@ The runtime also exposes `console` plus the following globals:
 | `state.update(fn)`                                              | Atomically transform the persisted state in SQLite |
 | `app.loop(delayMs, fn)`                                         | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
 | `app.new_uuid()`                                                | Generate a new UUID v4 string |
+| `app.md5(text)`                                                   | Get the MD5 hash of a string |
 | `fetch(url, init)`                                                | Synchronous HTTP fetch with the configured timeout and JSON body support |
 | `crypto.encrypt(plaintext)`, `crypto.decrypt(payload)`          | AES-256-GCM encrypt/decrypt with the configured key |
 | `llm.ask(prompt)`                                               | Generate text with the configured OpenAI connector |

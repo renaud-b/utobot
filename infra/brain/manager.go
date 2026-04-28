@@ -2,6 +2,7 @@ package brain
 
 import (
 	"context"
+	"crypto/md5"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -523,6 +524,19 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 	}
 
 	if err := app.Set("new_uuid", newUUIDFn); err != nil {
+		return err
+	}
+
+	md5Fn := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("md5 requires input string"))
+		}
+
+		hash := md5.Sum([]byte(call.Argument(0).String()))
+		return runtime.ToValue(hash)
+	}
+
+	if err := app.Set("md5", md5Fn); err != nil {
 		return err
 	}
 
