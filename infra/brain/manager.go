@@ -102,6 +102,9 @@ func (m *JsManager) LoadSource(path string, source []byte) error {
 	if err := bindConsole(runtime); err != nil {
 		return fmt.Errorf("bind console: %w", err)
 	}
+	if err := bindFetch(runtime); err != nil {
+		return fmt.Errorf("bind fetch: %w", err)
+	}
 	if err := bindApp(runtime, m.wallet, m.cipherKey, m.llm, &loop); err != nil {
 		return fmt.Errorf("bind app: %w", err)
 	}
@@ -380,10 +383,8 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return goja.Undefined()
 	}
 
-	for _, name := range []string{"configure_loop", "configure_autonomous_loop", "set_loop", "autonomous_loop", "loop"} {
-		if err := app.Set(name, configureLoop); err != nil {
-			return err
-		}
+	if err := app.Set("configure_loop", configureLoop); err != nil {
+		return err
 	}
 
 	encrypt := func(call goja.FunctionCall) goja.Value {
@@ -419,28 +420,6 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return err
 	}
 
-	cypher := runtime.NewObject()
-	if err := cypher.Set("encrypt", encrypt); err != nil {
-		return err
-	}
-	if err := cypher.Set("decrypt", decrypt); err != nil {
-		return err
-	}
-	if err := app.Set("cypher", cypher); err != nil {
-		return err
-	}
-
-	cipher := runtime.NewObject()
-	if err := cipher.Set("encrypt", encrypt); err != nil {
-		return err
-	}
-	if err := cipher.Set("decrypt", decrypt); err != nil {
-		return err
-	}
-	if err := app.Set("cipher", cipher); err != nil {
-		return err
-	}
-
 	generateText := func(call goja.FunctionCall) goja.Value {
 		if llm == nil {
 			panic(runtime.NewGoError(fmt.Errorf("llm connector is not configured")))
@@ -460,24 +439,7 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return runtime.ToValue(text)
 	}
 
-	llmObject := runtime.NewObject()
-	if err := llmObject.Set("generate", generateText); err != nil {
-		return err
-	}
-	if err := llmObject.Set("generate_text", generateText); err != nil {
-		return err
-	}
-
 	if err := app.Set("llm", generateText); err != nil {
-		return err
-	}
-	if err := app.Set("generate_text", generateText); err != nil {
-		return err
-	}
-	if err := app.Set("ask_llm", generateText); err != nil {
-		return err
-	}
-	if err := app.Set("llm_connector", llmObject); err != nil {
 		return err
 	}
 

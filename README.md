@@ -123,7 +123,7 @@ Each handler receives one argument: a request payload built by Go. It looks like
 }
 ```
 
-The runtime also exposes two globals:
+The runtime also exposes `console` and one `app` object:
 
 | Global | Meaning |
 | --- | --- |
@@ -176,8 +176,6 @@ module.exports = {
 };
 ```
 
-Aliases are available for compatibility: `app.configure_autonomous_loop`, `app.set_loop`, `app.autonomous_loop`, and `app.loop`.
-
 ## Encryption
 
 Brains can encrypt and decrypt strings with AES-256-GCM. The returned encrypted payload is base64 containing nonce plus ciphertext.
@@ -199,8 +197,6 @@ module.exports = {
 };
 ```
 
-Aliases are also available under `app.cypher.encrypt/decrypt` and `app.cipher.encrypt/decrypt`.
-
 ## LLM
 
 When `llm_key` is configured, brains can invoke the OpenAI connector synchronously from JavaScript.
@@ -220,7 +216,42 @@ module.exports = {
 };
 ```
 
-Aliases are available as `app.generate_text`, `app.ask_llm`, `app.llm_connector.generate`, and `app.llm_connector.generate_text`.
+## Fetch
+
+Brains can call outbound HTTP endpoints with a synchronous `fetch(url, init)` helper.
+
+The returned response object includes:
+
+| Property | Meaning |
+| --- | --- |
+| `status` | HTTP status code |
+| `ok` | `true` for 2xx responses |
+| `headers` | Response headers as a plain object |
+| `body` | Raw response body as text |
+| `text()` | Returns the raw body as text |
+| `json()` | Parses the body as JSON |
+
+```js
+module.exports = {
+  routes: {
+    "GET /remote": function () {
+      const response = fetch("https://example.com/api/data", {
+        method: "POST",
+        headers: { "X-Trace": "brain" },
+        body: { query: "hello" }
+      });
+
+      return {
+        status: response.status,
+        body: {
+          ok: response.ok,
+          data: response.json()
+        }
+      };
+    }
+  }
+};
+```
 
 ## Responses
 

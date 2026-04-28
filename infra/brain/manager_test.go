@@ -2,6 +2,11 @@ package brain
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -157,6 +162,117 @@ module.exports = {
 	}
 }
 
+func TestManagerFetchConnector(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/text":
+			w.Header().Set("X-Reply", "pong")
+			_, _ = io.WriteString(w, "hello world")
+		case "/json":
+			rawBody, err := io.ReadAll(r.Body)
+			if err != nil {
+				t.Fatalf("read request body: %v", err)
+			}
+			_ = r.Body.Close()
+
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("X-Reply", "pong")
+			if err := json.NewEncoder(w).Encode(map[string]any{
+				"method":      r.Method,
+				"contentType": r.Header.Get("Content-Type"),
+				"xTest":       r.Header.Get("X-Test"),
+				"body":        string(rawBody),
+			}); err != nil {
+				t.Fatalf("encode response: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	manager := NewManager()
+
+	err := manager.LoadSource("/brain.js", []byte(fmt.Sprintf(`
+module.exports = {
+	routes: {
+		'GET /fetch': function fetchRoute() {
+			const textResponse = fetch(%q + '/text');
+			const jsonResponse = fetch(%q + '/json', {
+				method: 'POST',
+				headers: { 'X-Test': 'yes' },
+				body: { message: 'hello' },
+			});
+
+			const parsed = jsonResponse.json();
+
+			return {
+				status: 200,
+				body: {
+					textStatus: textResponse.status,
+					textOk: textResponse.ok,
+					textHeader: textResponse.headers['x-reply'],
+					textValue: textResponse.text(),
+					jsonStatus: jsonResponse.status,
+					jsonOk: jsonResponse.ok,
+					jsonHeader: jsonResponse.headers['x-reply'],
+					jsonMethod: parsed.method,
+					jsonContentType: parsed.contentType,
+					jsonXTest: parsed.xTest,
+					jsonBody: parsed.body,
+				},
+			};
+		},
+	},
+};
+`, server.URL, server.URL)))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	route, _, ok := manager.Match("GET", "/fetch")
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+
+	result, err := manager.InvokeHandler(route, nil)
+	if err != nil {
+		t.Fatalf("expected no error invoking handler, got %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if body["textStatus"] != int64(200) || body["textOk"] != true {
+		t.Fatalf("unexpected text response status: %#v %#v", body["textStatus"], body["textOk"])
+	}
+	if body["textHeader"] != "pong" {
+		t.Fatalf("unexpected text header: %#v", body["textHeader"])
+	}
+	if body["textValue"] != "hello world" {
+		t.Fatalf("unexpected text value: %#v", body["textValue"])
+	}
+	if body["jsonStatus"] != int64(200) || body["jsonOk"] != true {
+		t.Fatalf("unexpected json response status: %#v %#v", body["jsonStatus"], body["jsonOk"])
+	}
+	if body["jsonHeader"] != "pong" {
+		t.Fatalf("unexpected json header: %#v", body["jsonHeader"])
+	}
+	if body["jsonMethod"] != "POST" {
+		t.Fatalf("unexpected json method: %#v", body["jsonMethod"])
+	}
+	if body["jsonContentType"] != "application/json" {
+		t.Fatalf("unexpected json content type: %#v", body["jsonContentType"])
+	}
+	if body["jsonXTest"] != "yes" {
+		t.Fatalf("unexpected json X-Test header: %#v", body["jsonXTest"])
+	}
+	if body["jsonBody"] != "{\"message\":\"hello\"}" {
+		t.Fatalf("unexpected json body: %#v", body["jsonBody"])
+	}
+}
+
 func TestManagerAutonomousLoopRunsConfiguredFunction(t *testing.T) {
 	manager := NewManager()
 
@@ -215,7 +331,7 @@ func TestManagerAutonomousLoopIsReplacedOnReload(t *testing.T) {
 	err := manager.LoadSource("/brain-v1.js", []byte(`
 let counter = 0;
 
-app.loop(5, function autonomousTick() {
+app.configure_loop(5, function autonomousTick() {
 	counter += 1;
 });
 
@@ -310,8 +426,6 @@ module.exports = {
 				body: {
 					encrypted: encrypted,
 					decrypted: app.decrypt(encrypted),
-					cypherDecrypted: app.cypher.decrypt(app.cypher.encrypt(data.secret)),
-					cipherDecrypted: app.cipher.decrypt(app.cipher.encrypt(data.secret)),
 				},
 			};
 		},
@@ -342,12 +456,6 @@ module.exports = {
 	if body["decrypted"] != "classified" {
 		t.Fatalf("unexpected decrypted value: %#v", body["decrypted"])
 	}
-	if body["cypherDecrypted"] != "classified" {
-		t.Fatalf("unexpected cypher decrypted value: %#v", body["cypherDecrypted"])
-	}
-	if body["cipherDecrypted"] != "classified" {
-		t.Fatalf("unexpected cipher decrypted value: %#v", body["cipherDecrypted"])
-	}
 }
 
 func TestManagerAppLLMGeneratesText(t *testing.T) {
@@ -367,7 +475,6 @@ module.exports = {
 				status: 200,
 				body: {
 					response: app.llm(data.prompt),
-					aliasResponse: app.llm_connector.generate_text('alias prompt'),
 				},
 			};
 		},
@@ -395,10 +502,7 @@ module.exports = {
 	if body["response"] != "llm response" {
 		t.Fatalf("unexpected llm response: %#v", body["response"])
 	}
-	if body["aliasResponse"] != "llm response" {
-		t.Fatalf("unexpected llm alias response: %#v", body["aliasResponse"])
-	}
-	if fakeLLM.prompt != "alias prompt" {
+	if fakeLLM.prompt != "brain prompt" {
 		t.Fatalf("unexpected prompt: %q", fakeLLM.prompt)
 	}
 }
