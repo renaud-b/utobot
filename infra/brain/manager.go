@@ -533,7 +533,7 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 		}
 
 		hash := md5.Sum([]byte(call.Argument(0).String()))
-		return runtime.ToValue(hash)
+		return runtime.ToValue(fmt.Sprintf("%x", hash))
 	}
 
 	if err := app.Set("md5", md5Fn); err != nil {
