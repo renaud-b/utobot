@@ -20,7 +20,7 @@ COPY --from=build /out/utobot /usr/local/bin/utobot
 
 USER utobot
 
-EXPOSE 8081
+EXPOSE 9000
 
 ENTRYPOINT ["/usr/local/bin/utobot"]
 CMD ["/etc/utobot/config.json"]
