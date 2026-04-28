@@ -30,13 +30,21 @@ Run it with a mounted config and wallet directory:
 
 ```bash
 docker run --rm \
-  -p 8081:8081 \
-  -v "$PWD/config.json:/etc/utobot/config.json" \
-  -v "$PWD/wallets:/wallets" \
+  -p 9000:9000 \
+  -v "$PWD/config.json:/opt/utobot/config.json" \
+  -v "$PWD/wallet.utx:/opt/utobot/wallet.utx:ro" \
   utobot
 ```
 
-The image runs `utobot /etc/utobot/config.json` by default. Pass another config path, chain id override, or `--debug` as container arguments when needed.
+The image runs `utobot /opt/utobot/config.json` by default. For container runs, set `wallet_path` in `config.json` to `/opt/utobot/wallet.utx`.
+
+With Docker Compose, link a different wallet file with:
+
+```bash
+UTOBOT_WALLET_FILE=/path/to/wallet.utx docker compose up --build
+```
+
+Pass another config path, chain id override, or `--debug` as container arguments when needed.
 
 ## Config
 

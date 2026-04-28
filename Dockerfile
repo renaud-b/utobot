@@ -14,7 +14,7 @@ RUN apk add --no-cache ca-certificates \
     && addgroup -S utobot \
     && adduser -S -G utobot utobot
 
-WORKDIR /app
+WORKDIR /opt/utobot
 
 COPY --from=build /out/utobot /usr/local/bin/utobot
 
@@ -23,4 +23,4 @@ USER utobot
 EXPOSE 9000
 
 ENTRYPOINT ["/usr/local/bin/utobot"]
-CMD ["/etc/utobot/config.json"]
+CMD ["/opt/utobot/config.json"]

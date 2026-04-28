@@ -1,36 +1,25 @@
-version: '3'
-
 services:
-
   ingress-utobot:
     build:
       context: .
       dockerfile: Dockerfile
-
     container_name: ingress-utobot
-
-    environment:
-      - PORT=9000
-
+    image: utobot:local
+    command: ["/opt/utobot/config.json"]
     volumes:
-      - ./config.json:/etc/utobot/config.json
-
+      - ./config.json:/opt/utobot/config.json
+      - ${UTOBOT_WALLET_FILE:-./wallet.utx}:/opt/utobot/wallet.utx:ro
+    ports:
+      - "9000:9000"
     labels:
       - "traefik.enable=true"
-
-      # domaine
       - "traefik.http.routers.ingressutobot.rule=Host(`ingress.utopixia.com`)"
-
-      # HTTPS
       - "traefik.http.routers.ingressutobot.entrypoints=websecure"
       - "traefik.http.routers.ingressutobot.tls.certresolver=myresolver"
-
-      # port interne
       - "traefik.http.services.ingressutobot.loadbalancer.server.port=9000"
-
     restart: always
 
 networks:
   default:
-    external:
-      name: nginx-proxy
+    name: nginx-proxy
+    external: true
