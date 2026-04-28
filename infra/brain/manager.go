@@ -566,10 +566,41 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 		return runtime.ToValue(decrypted)
 	}
 
+	verifyECDSASignature := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 3 {
+			panic(runtime.NewTypeError("crypto.verify_ecdsa_signature requires public_key_hex, message_hash_hex, and signature_hex"))
+		}
+
+		ok, err := crypto.VerifySignature(
+			call.Argument(0).String(),
+			call.Argument(1).String(),
+			call.Argument(2).String(),
+		)
+		if err != nil {
+			panic(runtime.NewGoError(err))
+		}
+
+		return runtime.ToValue(ok)
+	}
+
+	deriveAddress := func(call goja.FunctionCall) goja.Value {
+		if len(call.Arguments) < 1 {
+			panic(runtime.NewTypeError("crypto.derive_address requires public_key_hex"))
+		}
+
+		return runtime.ToValue(crypto.DeriveAddress(call.Argument(0).String()))
+	}
+
 	if err := cryptoObj.Set("encrypt", encrypt); err != nil {
 		return err
 	}
 	if err := cryptoObj.Set("decrypt", decrypt); err != nil {
+		return err
+	}
+	if err := cryptoObj.Set("verify_ecdsa_signature", verifyECDSASignature); err != nil {
+		return err
+	}
+	if err := cryptoObj.Set("derive_address", deriveAddress); err != nil {
 		return err
 	}
 	if err := runtime.Set("crypto", cryptoObj); err != nil {

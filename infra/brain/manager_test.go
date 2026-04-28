@@ -2,6 +2,8 @@ package brain
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -662,6 +664,62 @@ module.exports = {
 	}
 }
 
+func TestManagerCryptoVerifySignatureAndDeriveAddress(t *testing.T) {
+	kp, err := walletcrypto.GenerateKeyPair()
+	if err != nil {
+		t.Fatalf("GenerateKeyPair() error = %v", err)
+	}
+
+	messageHash := sha256.Sum256([]byte("signed message"))
+	messageHashHex := hex.EncodeToString(messageHash[:])
+	signatureHex, err := walletcrypto.SignMessage(kp.PrivateKeyHex, messageHashHex)
+	if err != nil {
+		t.Fatalf("SignMessage() error = %v", err)
+	}
+
+	manager := NewManagerWithEncryption(walletcrypto.KeyPair{}, mustGenerateEncryptionKey(t))
+
+	err = manager.LoadSource("/brain.js", []byte(fmt.Sprintf(`
+module.exports = {
+	routes: {
+		'POST /verify': function verifyRoute() {
+			return {
+				status: 200,
+				body: {
+					valid: crypto.verify_ecdsa_signature(%q, %q, %q),
+					address: crypto.derive_address(%q),
+				},
+			};
+		},
+	},
+};
+`, kp.PublicKeyHex, messageHashHex, signatureHex, kp.PublicKeyHex)))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	route, _, ok := manager.Match("POST", "/verify")
+	if !ok {
+		t.Fatal("expected route to be registered")
+	}
+
+	result, err := manager.InvokeHandler(route, nil)
+	if err != nil {
+		t.Fatalf("expected no error invoking handler, got %v", err)
+	}
+
+	body, ok := result.Export().(map[string]any)["body"].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected body type: %T", result.Export().(map[string]any)["body"])
+	}
+	if body["valid"] != true {
+		t.Fatalf("unexpected signature verification result: %#v", body["valid"])
+	}
+	if body["address"] != kp.Address {
+		t.Fatalf("unexpected derived address: %#v", body["address"])
+	}
+}
+
 func TestManagerAppLLMGeneratesText(t *testing.T) {
 	key, err := walletcrypto.GenerateEncryptionKey()
 	if err != nil {
@@ -736,6 +794,16 @@ module.exports = {
 	if err == nil {
 		t.Fatal("expected missing llm connector error")
 	}
+}
+
+func mustGenerateEncryptionKey(t *testing.T) []byte {
+	t.Helper()
+
+	key, err := walletcrypto.GenerateEncryptionKey()
+	if err != nil {
+		t.Fatalf("GenerateEncryptionKey() error = %v", err)
+	}
+	return key
 }
 
 func waitForCounter(t *testing.T, manager Manager, route Route, minimum int64) {
