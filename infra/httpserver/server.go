@@ -42,6 +42,15 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	s.addCORSHeaders(w, r)
+
+	if handled, err := s.handleCORSPreflight(w, r); handled {
+		if err != nil {
+			writeErrorPage(w, http.StatusInternalServerError, "CORS handling error", err, brain.Route{}, r)
+		}
+		return
+	}
+
 	route, params, ok := s.manager.Match(r.Method, r.URL.Path)
 	if !ok {
 		http.NotFound(w, r)
@@ -108,6 +117,44 @@ func buildRequestPayload(r *http.Request, params map[string]string) (map[string]
 		"remoteAddr": r.RemoteAddr,
 		"requestId":  r.Header.Get("X-Request-Id"),
 	}, nil
+}
+
+func (s *Server) handleCORSPreflight(w http.ResponseWriter, r *http.Request) (bool, error) {
+	if r.Method != http.MethodOptions {
+		return false, nil
+	}
+
+	requestedMethod := strings.TrimSpace(r.Header.Get("Access-Control-Request-Method"))
+	if requestedMethod == "" {
+		return false, nil
+	}
+
+	route, _, ok := s.manager.Match(strings.ToUpper(requestedMethod), r.URL.Path)
+	s.addCORSHeaders(w, r)
+	if !ok {
+		http.NotFound(w, r)
+		return true, nil
+	}
+
+	w.Header().Set("Access-Control-Allow-Methods", route.Method)
+	if requestedHeaders := strings.TrimSpace(r.Header.Get("Access-Control-Request-Headers")); requestedHeaders != "" {
+		w.Header().Set("Access-Control-Allow-Headers", requestedHeaders)
+	} else {
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Requested-With, X-Request-Id")
+	}
+	w.Header().Set("Access-Control-Max-Age", "86400")
+	w.WriteHeader(http.StatusNoContent)
+	return true, nil
+}
+
+func (s *Server) addCORSHeaders(w http.ResponseWriter, r *http.Request) {
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		return
+	}
+
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Add("Vary", "Origin")
 }
 
 func writeResponse(w http.ResponseWriter, exported any) error {

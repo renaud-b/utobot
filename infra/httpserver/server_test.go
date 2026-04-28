@@ -64,6 +64,7 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 
 	server := New(8081, manager)
 	req := httptest.NewRequest(http.MethodPost, "http://example.com/users/42", strings.NewReader(`{"name":"Codex"}`))
+	req.Header.Set("Origin", "https://example.com")
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("X-Request-Id", "abc-123")
 	rr := httptest.NewRecorder()
@@ -80,6 +81,9 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 
 	if got := rr.Header().Get("content-type"); got != "application/vnd.example+json" {
 		t.Fatalf("unexpected content-type: %q", got)
+	}
+	if got := rr.Header().Get("access-control-allow-origin"); got != "*" {
+		t.Fatalf("unexpected CORS header: %q", got)
 	}
 
 	if manager.invokedAs.Method != http.MethodPost {
@@ -129,6 +133,41 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 	}
 	if body != "Hello, Codex!" {
 		t.Fatalf("unexpected response message: %#v", body)
+	}
+}
+
+func TestServerHandlesCORSPreflight(t *testing.T) {
+	manager := &fakeBrainManager{
+		hasRoute: true,
+		route: brain.Route{
+			Method: http.MethodPost,
+			Path:   "/submit",
+		},
+	}
+	server := New(8081, manager)
+
+	req := httptest.NewRequest(http.MethodOptions, "http://example.com/submit", nil)
+	req.Header.Set("Origin", "https://example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	req.Header.Set("Access-Control-Request-Headers", "content-type, x-request-id")
+	rr := httptest.NewRecorder()
+
+	server.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNoContent {
+		t.Fatalf("unexpected status: got %d want %d", rr.Code, http.StatusNoContent)
+	}
+	if got := rr.Header().Get("access-control-allow-origin"); got != "*" {
+		t.Fatalf("unexpected allow-origin: %q", got)
+	}
+	if got := rr.Header().Get("access-control-allow-methods"); got != "POST" {
+		t.Fatalf("unexpected allow-methods: %q", got)
+	}
+	if got := rr.Header().Get("access-control-allow-headers"); got != "content-type, x-request-id" {
+		t.Fatalf("unexpected allow-headers: %q", got)
+	}
+	if got := rr.Header().Get("access-control-max-age"); got != "86400" {
+		t.Fatalf("unexpected max-age: %q", got)
 	}
 }
 

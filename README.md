@@ -265,6 +265,8 @@ Handlers can return a plain string, a plain object, or nothing.
 
 If a handler returns a string, Utobot writes it as plain text. If it returns an object, Utobot understands `status`, `contentType`, `headers`, and `body`. If `body` is an object, it is encoded as JSON. If the handler returns nothing, the server answers with `204 No Content`.
 
+Utobot also handles browser CORS preflight requests automatically for defined routes. If the browser sends an `Origin` header, the server returns `Access-Control-Allow-Origin: *` on the response. If you need credentialed CORS or a restricted origin list, that should be configured in the server rather than in the brain script.
+
 ## Reload
 
 Utobot keeps the current brain height in the file given by `script_height_path`. On startup it stores the current height, then a background worker checks the chain periodically and reloads the script when the height changes.
