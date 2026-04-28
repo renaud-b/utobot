@@ -126,26 +126,24 @@ Each handler receives one argument: a request payload built by Go. It looks like
 }
 ```
 
-The runtime also exposes `console` and one `app` object:
+The runtime also exposes `console` plus the following globals:
 
 | Global | Meaning |
 | --- | --- |
 | `console.log`, `console.warn`, `console.error`, `console.debug` | Forward to the Go logger |
-| `app.state.get()`, `app.state.set(value)` | Persisted JSON-like state for the loaded script |
-| `app.state.update(fn)` | Atomically transform the persisted state in SQLite |
-| `app.configure_loop(delayMs, fn)` | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
-| `app.encrypt(plaintext)`, `app.decrypt(payload)` | AES-256-GCM encrypt/decrypt with the configured key |
-| `app.llm(prompt)` | Generate text with the configured OpenAI connector |
+| `state.get()`, `state.set(value)` | Persisted JSON-like state for the loaded script |
+| `state.update(fn)` | Atomically transform the persisted state in SQLite |
+| `app.loop(delayMs, fn)` | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
+| `crypto.encrypt(plaintext)`, `crypto.decrypt(payload)` | AES-256-GCM encrypt/decrypt with the configured key |
+| `llm.ask(prompt)` | Generate text with the configured OpenAI connector |
 
-`app` is useful when the script wants to keep JSON-like state across multiple requests and reloads.
-`app.get_context()`, `app.set_context(value)`, and `app.update_context(fn)` remain available as aliases.
-Avoid mutating shared state at module load time; initialize it inside a route or loop with `app.state.update(...)` or `app.state.set(...)`.
+Avoid mutating shared state at module load time; initialize it inside a route or loop with `state.update(...)` or `state.set(...)`.
 
 ```js
 module.exports = {
   routes: {
     "POST /count": function (req) {
-      app.state.update(function (ctx) {
+      state.update(function (ctx) {
         ctx.counter = (ctx.counter || 0) + 1;
         return ctx;
       });
@@ -153,7 +151,7 @@ module.exports = {
       return {
         status: 200,
         body: {
-          counter: app.state.get().counter
+          counter: state.get().counter
         }
       };
     }
@@ -163,21 +161,21 @@ module.exports = {
 
 ## Autonomous Loop
 
-A brain can configure one autonomous loop at load time. The loop runs in its own runtime, so shared state should go through `app.state` rather than module-level variables.
+A brain can configure one autonomous loop at load time. The loop runs in its own runtime, so shared state should go through `state` rather than module-level variables.
 
 ```js
-app.configure_loop(5000, function autonomousTick() {
-  app.state.update(function (ctx) {
+app.loop(5000, function autonomousTick() {
+  state.update(function (ctx) {
     ctx.ticks = (ctx.ticks || 0) + 1;
     return ctx;
   });
-  console.log("autonomous tick", app.state.get().ticks);
+  console.log("autonomous tick", state.get().ticks);
 });
 
 module.exports = {
   routes: {
     "GET /ticks": function () {
-      return { status: 200, body: { ticks: app.state.get().ticks || 0 } };
+      return { status: 200, body: { ticks: state.get().ticks || 0 } };
     }
   }
 };
@@ -191,12 +189,12 @@ Brains can encrypt and decrypt strings with AES-256-GCM. The returned encrypted 
 module.exports = {
   routes: {
     "POST /secret": function (req) {
-      const encrypted = app.encrypt(req.body);
+      const encrypted = crypto.encrypt(req.body);
       return {
         status: 200,
         body: {
           encrypted,
-          decrypted: app.decrypt(encrypted)
+          decrypted: crypto.decrypt(encrypted)
         }
       };
     }
@@ -215,7 +213,7 @@ module.exports = {
       return {
         status: 200,
         body: {
-          answer: app.llm(req.json.prompt)
+          answer: llm.ask(req.json.prompt)
         }
       };
     }

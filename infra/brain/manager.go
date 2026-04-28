@@ -139,7 +139,7 @@ func (m *JsManager) instantiateRuntime(source []byte) (*goja.Runtime, map[string
 	if err := bindFetch(runtime); err != nil {
 		return nil, nil, nil, fmt.Errorf("bind fetch: %w", err)
 	}
-	if err := bindApp(runtime, m.wallet, m.cipherKey, m.llm, m.stateStore, &loop); err != nil {
+	if err := bindBrainAPI(runtime, m.cipherKey, m.llm, m.stateStore, &loop); err != nil {
 		return nil, nil, nil, fmt.Errorf("bind app: %w", err)
 	}
 
@@ -372,8 +372,7 @@ func bindConsole(runtime *goja.Runtime) error {
 	return runtime.Set("console", console)
 }
 
-func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm LLMConnector, stateStore state.ContextStore, loop **autonomousLoop) error {
-	app := runtime.NewObject()
+func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, stateStore state.ContextStore, loop **autonomousLoop) error {
 	contextValue, err := loadContextValue(runtime, stateStore)
 	if err != nil {
 		return err
@@ -401,6 +400,9 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 	}
 
 	stateObj := runtime.NewObject()
+	cryptoObj := runtime.NewObject()
+	llmObj := runtime.NewObject()
+	app := runtime.NewObject()
 
 	getContext := func(goja.FunctionCall) goja.Value {
 		return contextValue
@@ -422,12 +424,12 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 
 	updateContext := func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
-			panic(runtime.NewTypeError("update_context requires a function"))
+			panic(runtime.NewTypeError("state.update requires a function"))
 		}
 
 		updater, ok := goja.AssertFunction(call.Argument(0))
 		if !ok {
-			panic(runtime.NewTypeError("update_context function must be callable"))
+			panic(runtime.NewTypeError("state.update function must be callable"))
 		}
 
 		runUpdate := func(raw []byte) (goja.Value, error) {
@@ -484,37 +486,23 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 	if err := stateObj.Set("update", updateContext); err != nil {
 		return err
 	}
-
-	/*
-		stateChainAddr := "state@" + wallet.Address
-		client := network.NewHttpClient("https://metapixia.com")
-	*/
-	if err := app.Set("state", stateObj); err != nil {
-		return err
-	}
-	if err := app.Set("get_context", getContext); err != nil {
-		return err
-	}
-	if err := app.Set("set_context", setContext); err != nil {
-		return err
-	}
-	if err := app.Set("update_context", updateContext); err != nil {
+	if err := runtime.Set("state", stateObj); err != nil {
 		return err
 	}
 
-	configureLoop := func(call goja.FunctionCall) goja.Value {
+	loopFn := func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 2 {
-			panic(runtime.NewTypeError("autonomous loop requires delay_ms and function"))
+			panic(runtime.NewTypeError("loop requires delay_ms and function"))
 		}
 
 		delayMs := call.Argument(0).ToInteger()
 		if delayMs <= 0 {
-			panic(runtime.NewTypeError("autonomous loop delay_ms must be greater than 0"))
+			panic(runtime.NewTypeError("loop delay_ms must be greater than 0"))
 		}
 
 		fn, ok := goja.AssertFunction(call.Argument(1))
 		if !ok {
-			panic(runtime.NewTypeError("autonomous loop function must be callable"))
+			panic(runtime.NewTypeError("loop function must be callable"))
 		}
 
 		*loop = &autonomousLoop{
@@ -525,13 +513,13 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return goja.Undefined()
 	}
 
-	if err := app.Set("configure_loop", configureLoop); err != nil {
+	if err := app.Set("loop", loopFn); err != nil {
 		return err
 	}
 
 	encrypt := func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
-			panic(runtime.NewTypeError("encrypt requires plaintext"))
+			panic(runtime.NewTypeError("crypto.encrypt requires plaintext"))
 		}
 
 		encrypted, err := crypto.EncryptAES256GCM(cipherKey, call.Argument(0).String())
@@ -544,7 +532,7 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 
 	decrypt := func(call goja.FunctionCall) goja.Value {
 		if len(call.Arguments) < 1 {
-			panic(runtime.NewTypeError("decrypt requires encrypted payload"))
+			panic(runtime.NewTypeError("crypto.decrypt requires encrypted payload"))
 		}
 
 		decrypted, err := crypto.DecryptAES256GCM(cipherKey, call.Argument(0).String())
@@ -555,19 +543,22 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return runtime.ToValue(decrypted)
 	}
 
-	if err := app.Set("encrypt", encrypt); err != nil {
+	if err := cryptoObj.Set("encrypt", encrypt); err != nil {
 		return err
 	}
-	if err := app.Set("decrypt", decrypt); err != nil {
+	if err := cryptoObj.Set("decrypt", decrypt); err != nil {
+		return err
+	}
+	if err := runtime.Set("crypto", cryptoObj); err != nil {
 		return err
 	}
 
-	generateText := func(call goja.FunctionCall) goja.Value {
+	ask := func(call goja.FunctionCall) goja.Value {
 		if llm == nil {
 			panic(runtime.NewGoError(fmt.Errorf("llm connector is not configured")))
 		}
 		if len(call.Arguments) < 1 {
-			panic(runtime.NewTypeError("llm requires prompt"))
+			panic(runtime.NewTypeError("llm.ask requires prompt"))
 		}
 
 		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
@@ -588,7 +579,10 @@ func bindApp(runtime *goja.Runtime, wallet crypto.KeyPair, cipherKey []byte, llm
 		return runtime.ToValue(text)
 	}
 
-	if err := app.Set("llm", generateText); err != nil {
+	if err := llmObj.Set("ask", ask); err != nil {
+		return err
+	}
+	if err := runtime.Set("llm", llmObj); err != nil {
 		return err
 	}
 

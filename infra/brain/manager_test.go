@@ -108,8 +108,8 @@ func TestManagerAppContextPersistsAcrossInvocations(t *testing.T) {
 	err := manager.LoadSource("/brain.js", []byte(`
 module.exports = {
 	routes: {
-		'POST /state': function state(data) {
-			app.state.update(function (ctx) {
+		'POST /state': function updateState(data) {
+			state.update(function (ctx) {
 				const counter = (ctx.counter || 0) + 1;
 				const tags = ctx.tags || [];
 				return {
@@ -121,8 +121,8 @@ module.exports = {
 			return {
 				status: 200,
 				body: {
-					counter: app.state.get().counter,
-					tags: app.state.get().tags,
+					counter: state.get().counter,
+					tags: state.get().tags,
 				}
 			};
 		},
@@ -191,8 +191,8 @@ func TestManagerAppContextPersistsAcrossReloadsWithSQLite(t *testing.T) {
 	err = manager1.LoadSource("/brain-v1.js", []byte(`
 module.exports = {
 	routes: {
-		'POST /state': function state(data) {
-			app.state.update(function (ctx) {
+		'POST /state': function updateState(data) {
+			state.update(function (ctx) {
 				ctx.counter = (ctx.counter || 0) + 1;
 				return ctx;
 			});
@@ -200,7 +200,7 @@ module.exports = {
 			return {
 				status: 200,
 				body: {
-					counter: app.state.get().counter,
+					counter: state.get().counter,
 				}
 			};
 		},
@@ -254,11 +254,11 @@ module.exports = {
 	err = manager2.LoadSource("/brain-v2.js", []byte(`
 module.exports = {
 	routes: {
-		'GET /state': function state() {
+		'GET /state': function getState() {
 			return {
 				status: 200,
 				body: {
-					counter: app.state.get().counter,
+					counter: state.get().counter,
 				}
 			};
 		},
@@ -308,15 +308,15 @@ func TestManagerAppStateSupportsParallelUpdates(t *testing.T) {
 module.exports = {
 	routes: {
 		'POST /inc': function inc() {
-			app.state.update(function (ctx) {
+			state.update(function (ctx) {
 				ctx.counter = (ctx.counter || 0) + 1;
 				return ctx;
 			});
 
-			return { status: 200, body: { counter: app.state.get().counter } };
+			return { status: 200, body: { counter: state.get().counter } };
 		},
 		'GET /count': function count() {
-			return { status: 200, body: { counter: app.state.get().counter || 0 } };
+			return { status: 200, body: { counter: state.get().counter || 0 } };
 		},
 	},
 };
@@ -481,8 +481,8 @@ func TestManagerAutonomousLoopRunsConfiguredFunction(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain.js", []byte(`
-app.configure_loop(5, function autonomousTick() {
-	app.state.update(function (ctx) {
+app.loop(5, function autonomousTick() {
+	state.update(function (ctx) {
 		ctx.counter = (ctx.counter || 0) + 1;
 		return ctx;
 	});
@@ -493,7 +493,7 @@ module.exports = {
 		'GET /counter': function counterRoute() {
 			return {
 				status: 200,
-				body: { counter: app.state.get().counter },
+				body: { counter: state.get().counter },
 			};
 		},
 	},
@@ -534,8 +534,8 @@ func TestManagerAutonomousLoopIsReplacedOnReload(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain-v1.js", []byte(`
-app.configure_loop(5, function autonomousTick() {
-	app.state.update(function (ctx) {
+app.loop(5, function autonomousTick() {
+	state.update(function (ctx) {
 		ctx.counter = (ctx.counter || 0) + 1;
 		return ctx;
 	});
@@ -544,7 +544,7 @@ app.configure_loop(5, function autonomousTick() {
 module.exports = {
 	routes: {
 		'GET /counter': function counterRoute() {
-			return { status: 200, body: { version: 1, counter: app.state.get().counter } };
+			return { status: 200, body: { version: 1, counter: state.get().counter } };
 		},
 	},
 };
@@ -563,7 +563,7 @@ module.exports = {
 module.exports = {
 	routes: {
 		'GET /counter': function counterRoute() {
-			return { status: 200, body: { version: 2, counter: app.state.get().counter } };
+			return { status: 200, body: { version: 2, counter: state.get().counter } };
 		},
 	},
 };
@@ -599,7 +599,7 @@ func TestManagerAutonomousLoopRejectsInvalidConfiguration(t *testing.T) {
 	manager := NewManager()
 
 	err := manager.LoadSource("/brain.js", []byte(`
-app.configure_loop(0, function () {});
+app.loop(0, function () {});
 
 module.exports = {
 	routes: {
@@ -624,12 +624,12 @@ func TestManagerAppEncryptDecrypt(t *testing.T) {
 module.exports = {
 	routes: {
 		'POST /crypto': function cryptoRoute(data) {
-			const encrypted = app.encrypt(data.secret);
+			const encrypted = crypto.encrypt(data.secret);
 			return {
 				status: 200,
 				body: {
 					encrypted: encrypted,
-					decrypted: app.decrypt(encrypted),
+					decrypted: crypto.decrypt(encrypted),
 				},
 			};
 		},
@@ -678,7 +678,7 @@ module.exports = {
 			return {
 				status: 200,
 				body: {
-					response: app.llm(data.prompt),
+					response: llm.ask(data.prompt),
 				},
 			};
 		},
@@ -718,7 +718,7 @@ func TestManagerAppLLMReturnsErrorWhenUnconfigured(t *testing.T) {
 module.exports = {
 	routes: {
 		'POST /llm': function llmRoute(data) {
-			return app.llm(data.prompt);
+			return llm.ask(data.prompt);
 		},
 	},
 };
