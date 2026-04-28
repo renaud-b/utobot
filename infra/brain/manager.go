@@ -519,7 +519,7 @@ func bindBrainAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, sta
 	}
 
 	newUUIDFn := func(call goja.FunctionCall) goja.Value {
-		return runtime.ToValue(uuid.New())
+		return runtime.ToValue(uuid.NewString())
 	}
 
 	if err := app.Set("new_uuid", newUUIDFn); err != nil {
