@@ -12,16 +12,16 @@ import (
 	"strconv"
 	"strings"
 
-	"utobot/infra/brain"
+	"utobot/infra/runtime"
 )
 
 type Server struct {
 	addr    string
-	manager brain.Manager
+	manager runtime.Manager
 	server  *http.Server
 }
 
-func New(port int, manager brain.Manager) *Server {
+func New(port int, manager runtime.Manager) *Server {
 	addr := fmt.Sprintf(":%d", port)
 	return &Server{
 		addr:    addr,
@@ -48,7 +48,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if handled, err := s.handleCORSPreflight(w, r); handled {
 		if err != nil {
-			writeErrorPage(w, http.StatusInternalServerError, "CORS handling error", err, brain.Route{}, r)
+			writeErrorPage(w, http.StatusInternalServerError, "CORS handling error", err, runtime.Route{}, r)
 		}
 		return
 	}
@@ -67,7 +67,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.manager.InvokeHandler(route, payload)
 	if err != nil {
-		writeErrorPage(w, http.StatusInternalServerError, "Brain script error", err, route, r)
+		writeErrorPage(w, http.StatusInternalServerError, "Runtime script error", err, route, r)
 		return
 	}
 
@@ -310,7 +310,7 @@ func toStatusCode(value any) (int, bool) {
 	return 0, false
 }
 
-func writeErrorPage(w http.ResponseWriter, status int, title string, err error, route brain.Route, r *http.Request) {
+func writeErrorPage(w http.ResponseWriter, status int, title string, err error, route runtime.Route, r *http.Request) {
 	w.Header().Set("content-type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
 

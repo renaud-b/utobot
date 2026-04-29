@@ -1,8 +1,8 @@
 # Utobot
 
-Utobot is a small Go HTTP host that loads a JavaScript brain, serves HTTP routes, and keeps the runtime state in SQLite on the Go side.
+Utobot is a small Go HTTP host that loads a JavaScript runtime, serves HTTP routes, and keeps the runtime state in SQLite on the Go side.
 
-The current code is intentionally simple. It reads startup parameters from JSON, fetches a brain script by chain id, loads that script into `goja`, starts an HTTP server, and reloads the script when the backing chain height changes.
+The current code is intentionally simple. It reads startup parameters from JSON, fetches a runtime script by chain id, loads that script into `goja`, starts an HTTP server, and reloads the script when the backing chain height changes.
 
 ## Run it
 
@@ -10,7 +10,7 @@ The current code is intentionally simple. It reads startup parameters from JSON,
 go run . ./config.json
 ```
 
-`main.go` expects the config path as the first argument. A second non-`--debug` argument overrides the brain chain id. `--debug` raises the log level.
+`main.go` expects the config path as the first argument. A second non-`--debug` argument overrides the runtime chain id. `--debug` raises the log level.
 
 Example:
 
@@ -52,10 +52,10 @@ The config loader expects a flat JSON object with these fields.
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `http_address` | yes | Base address used to fetch the JavaScript brain |
+| `http_address` | yes | Base address used to fetch the JavaScript runtime |
 | `port` | yes | Port used by the local HTTP server |
 | `wallet_path` | yes | Required by startup validation; currently kept in the loaded parameters |
-| `brain_chain_id` | yes | Chain id used to fetch the JavaScript brain |
+| `runtime_chain_id` | yes | Chain id used to fetch the JavaScript runtime |
 | `state_db_path` | no | SQLite file used to persist the bot state; if omitted, state stays in memory |
 | `script_height_path` | no | File used by the reload worker to remember the last seen height |
 | `encryption_key` | no | Base64-encoded 32-byte AES-256-GCM key; generated and saved on first load when absent |
@@ -68,7 +68,7 @@ Example:
   "http_address": "127.0.0.1:8080",
   "port": 8081,
   "wallet_path": "./wallet.json",
-  "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
+  "runtime_chain_id": "AZ3BXaotezKx2AioD3gGvA",
   "script_height_path": "./.utobot.script-height.json",
   "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
   "llm_key": "sk-your-openai-api-key"
@@ -78,7 +78,7 @@ Example:
 If `script_height_path` is empty, the reload worker falls back to `.utobot.script-height.json`.
 If `state_db_path` is empty or omitted, Utobot keeps state in memory instead of SQLite.
 
-## JavaScript Brain
+## JavaScript Runtime
 
 The loaded script is a CommonJS module. It must export a `routes` object, where each key is `METHOD /path`.
 
@@ -135,7 +135,7 @@ The runtime also exposes `console` plus the following globals:
 | `btoa(binaryString)` | Encode a binary string to base64 |
 | `state.get()`, `state.set(value)`                               | Persisted JSON-like state for the loaded script |
 | `state.update(fn)`                                              | Atomically transform the persisted state in SQLite |
-| `app.loop(delayMs, fn)`                                         | Run `fn` repeatedly in the brain runtime every `delayMs` milliseconds |
+| `app.loop(delayMs, fn)`                                         | Run `fn` repeatedly in the JavaScript runtime every `delayMs` milliseconds |
 | `app.new_uuid()`                                                | Generate a new UUID v4 string |
 | `app.md5(text)`                                                   | Get the MD5 hash of a string |
 | `fetch(url, init)`                                                | Synchronous HTTP fetch with the configured timeout and JSON body support |
@@ -168,7 +168,7 @@ module.exports = {
 
 ## Autonomous Loop
 
-A brain can configure one autonomous loop at load time. The loop runs in its own runtime, so shared state should go through `state` rather than module-level variables.
+A runtime can configure one autonomous loop at load time. The loop runs in its own runtime, so shared state should go through `state` rather than module-level variables.
 
 ```js
 app.loop(5000, function autonomousTick() {
@@ -190,7 +190,7 @@ module.exports = {
 
 ## Encryption
 
-Brains can encrypt and decrypt strings with AES-256-GCM. The returned encrypted payload is base64 containing nonce plus ciphertext.
+The runtime can encrypt and decrypt strings with AES-256-GCM. The returned encrypted payload is base64 containing nonce plus ciphertext.
 
 ```js
 module.exports = {
@@ -227,7 +227,7 @@ module.exports = {
 
 ## LLM
 
-When `llm_key` is configured, brains can invoke the OpenAI connector synchronously from JavaScript.
+When `llm_key` is configured, the runtime can invoke the OpenAI connector synchronously from JavaScript.
 
 ```js
 module.exports = {
@@ -246,7 +246,7 @@ module.exports = {
 
 ## Fetch
 
-Brains can call outbound HTTP endpoints with a synchronous `fetch(url, init)` helper.
+The runtime can call outbound HTTP endpoints with a synchronous `fetch(url, init)` helper.
 
 The returned response object includes:
 
@@ -265,7 +265,7 @@ module.exports = {
     "GET /remote": function () {
       const response = fetch("https://example.com/api/data", {
         method: "POST",
-        headers: { "X-Trace": "brain" },
+        headers: { "X-Trace": "runtime" },
         body: { query: "hello" }
       });
 
@@ -287,15 +287,15 @@ Handlers can return a plain string, a plain object, or nothing.
 
 If a handler returns a string, Utobot writes it as plain text. If it returns an object, Utobot understands `status`, `contentType`, `headers`, and `body`. If `body` is an object, it is encoded as JSON. If the handler returns nothing, the server answers with `204 No Content`.
 
-Utobot also handles browser CORS preflight requests automatically for defined routes. If the browser sends an `Origin` header, the server returns `Access-Control-Allow-Origin: *` on the response. If you need credentialed CORS or a restricted origin list, that should be configured in the server rather than in the brain script.
+Utobot also handles browser CORS preflight requests automatically for defined routes. If the browser sends an `Origin` header, the server returns `Access-Control-Allow-Origin: *` on the response. If you need credentialed CORS or a restricted origin list, that should be configured in the server rather than in the JavaScript runtime script.
 
 ## Reload
 
-Utobot keeps the current brain height in the file given by `script_height_path`. On startup it stores the current height, then a background worker checks the chain periodically and reloads the script when the height changes.
+Utobot keeps the current runtime height in the file given by `script_height_path`. On startup it stores the current height, then a background worker checks the chain periodically and reloads the script when the height changes.
 
 
 The current tests also show the exact runtime behavior:
 
 ```bash
-go test ./infra/brain
+go test ./infra/runtime
 ```

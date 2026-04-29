@@ -5,11 +5,11 @@ import "testing"
 func TestParametersValidate(t *testing.T) {
 	t.Run("valid parameters", func(t *testing.T) {
 		params := Parameters{
-			HTTPAddress:  "127.0.0.1:8080",
-			Port:         8081,
-			WalletPath:   "./wallet.json",
-			BrainChainID: "./brain.js",
-			StateDBPath:  "./state.sqlite",
+			HTTPAddress:    "127.0.0.1:8080",
+			Port:           8081,
+			WalletPath:     "./wallet.json",
+			RuntimeChainID: "./runtime.js",
+			StateDBPath:    "./state.sqlite",
 		}
 
 		if err := params.Validate(); err != nil {
@@ -17,7 +17,7 @@ func TestParametersValidate(t *testing.T) {
 		}
 	})
 
-	t.Run("missing brain path", func(t *testing.T) {
+	t.Run("missing runtime path", func(t *testing.T) {
 		params := Parameters{
 			HTTPAddress: "127.0.0.1:8080",
 			Port:        8081,
@@ -32,10 +32,10 @@ func TestParametersValidate(t *testing.T) {
 
 	t.Run("missing port", func(t *testing.T) {
 		params := Parameters{
-			HTTPAddress:  "127.0.0.1:8080",
-			WalletPath:   "./wallet.json",
-			BrainChainID: "./brain.js",
-			StateDBPath:  "./state.sqlite",
+			HTTPAddress:    "127.0.0.1:8080",
+			WalletPath:     "./wallet.json",
+			RuntimeChainID: "./runtime.js",
+			StateDBPath:    "./state.sqlite",
 		}
 
 		if err := params.Validate(); err == nil {

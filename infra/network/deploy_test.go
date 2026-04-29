@@ -61,10 +61,10 @@ func TestDeployPreparesSignsAndSubmits(t *testing.T) {
 	client := NewHttpClient(server.URL)
 	result, err := client.Deploy(DeployRequest{
 		ChainID:       "chain-1",
-		FilePath:      "brain.js",
+		FilePath:      "runtime.js",
 		Kind:          "js",
 		Content:       "module.exports = {}",
-		CommitMessage: "deploy brain",
+		CommitMessage: "deploy runtime",
 	}, wallet)
 	if err != nil {
 		t.Fatalf("Deploy() error = %v", err)

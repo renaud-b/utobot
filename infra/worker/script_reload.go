@@ -12,20 +12,20 @@ import (
 	"utobot/infra/network"
 )
 
-type BrainManager interface {
+type RuntimeManager interface {
 	LoadSource(path string, source []byte) error
 }
 
 type ScriptReloadWorker struct {
 	client    network.Client
-	manager   BrainManager
+	manager   RuntimeManager
 	chainID   string
 	statePath string
 	interval  time.Duration
 	logger    *slog.Logger
 }
 
-func New(client network.Client, manager BrainManager, chainID, statePath string, interval time.Duration) *ScriptReloadWorker {
+func New(client network.Client, manager RuntimeManager, chainID, statePath string, interval time.Duration) *ScriptReloadWorker {
 	if interval <= 0 {
 		interval = 5 * time.Second
 	}

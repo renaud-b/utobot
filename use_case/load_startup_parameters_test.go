@@ -19,11 +19,11 @@ func (s stubLoader) Load(path string) (domain.Parameters, error) {
 func TestLoadStartupParametersExecuteUsesLoaderResult(t *testing.T) {
 	loader := stubLoader{
 		params: domain.Parameters{
-			HTTPAddress:  "127.0.0.1:8080",
-			Port:         8081,
-			WalletPath:   "./wallet.json",
-			BrainChainID: "./brain.js",
-			StateDBPath:  "./state.sqlite",
+			HTTPAddress:    "127.0.0.1:8080",
+			Port:           8081,
+			WalletPath:     "./wallet.json",
+			RuntimeChainID: "./runtime.js",
+			StateDBPath:    "./state.sqlite",
 		},
 	}
 
@@ -33,19 +33,19 @@ func TestLoadStartupParametersExecuteUsesLoaderResult(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if params.BrainChainID != "./brain.js" {
-		t.Fatalf("unexpected brain path: %q", params.BrainChainID)
+	if params.RuntimeChainID != "./runtime.js" {
+		t.Fatalf("unexpected runtime path: %q", params.RuntimeChainID)
 	}
 }
 
-func TestLoadStartupParametersExecuteOverridesBrainPath(t *testing.T) {
+func TestLoadStartupParametersExecuteOverridesRuntimePath(t *testing.T) {
 	loader := stubLoader{
 		params: domain.Parameters{
-			HTTPAddress:  "127.0.0.1:8080",
-			Port:         8081,
-			WalletPath:   "./wallet.json",
-			BrainChainID: "./brain.js",
-			StateDBPath:  "./state.sqlite",
+			HTTPAddress:    "127.0.0.1:8080",
+			Port:           8081,
+			WalletPath:     "./wallet.json",
+			RuntimeChainID: "./runtime.js",
+			StateDBPath:    "./state.sqlite",
 		},
 	}
 
@@ -55,8 +55,8 @@ func TestLoadStartupParametersExecuteOverridesBrainPath(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if params.BrainChainID != "./override.js" {
-		t.Fatalf("unexpected brain path: %q", params.BrainChainID)
+	if params.RuntimeChainID != "./override.js" {
+		t.Fatalf("unexpected runtime path: %q", params.RuntimeChainID)
 	}
 }
 

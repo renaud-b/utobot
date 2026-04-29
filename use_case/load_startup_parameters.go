@@ -16,14 +16,14 @@ func NewLoadStartupParameters(loader ParametersLoader) LoadStartupParameters {
 	return LoadStartupParameters{Loader: loader}
 }
 
-func (uc LoadStartupParameters) Execute(configPath string, brainOverride string) (domain.Parameters, error) {
+func (uc LoadStartupParameters) Execute(configPath string, runtimeOverride string) (domain.Parameters, error) {
 	params, err := uc.Loader.Load(configPath)
 	if err != nil {
 		return domain.Parameters{}, err
 	}
 
-	if brainOverride != "" {
-		params.BrainChainID = brainOverride
+	if runtimeOverride != "" {
+		params.RuntimeChainID = runtimeOverride
 	}
 
 	if err := params.Validate(); err != nil {

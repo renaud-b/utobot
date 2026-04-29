@@ -6,7 +6,7 @@ type Parameters struct {
 	HTTPAddress      string `json:"http_address"`
 	Port             int    `json:"port"`
 	WalletPath       string `json:"wallet_path"`
-	BrainChainID     string `json:"brain_chain_id"`
+	RuntimeChainID   string `json:"runtime_chain_id"`
 	StateDBPath      string `json:"state_db_path"`
 	ScriptHeightPath string `json:"script_height_path"`
 	EncryptionKey    string `json:"encryption_key"`
@@ -23,8 +23,8 @@ func (p Parameters) Validate() error {
 	if p.WalletPath == "" {
 		return fmt.Errorf("wallet_path is required")
 	}
-	if p.BrainChainID == "" {
-		return fmt.Errorf("brain_path is required")
+	if p.RuntimeChainID == "" {
+		return fmt.Errorf("runtime_chain_id is required")
 	}
 	return nil
 }

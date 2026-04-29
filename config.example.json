@@ -1,5 +1,5 @@
 {
-  "brain_chain_id": "AZ3BXaotezKx2AioD3gGvA",
+  "runtime_chain_id": "AZ3BXaotezKx2AioD3gGvA",
   "http_address": "https://metapixia.com",
   "port": 9000,
   "script_height_path": "/tmp/.utobot.script-height.json",

@@ -9,43 +9,43 @@ import (
 	"testing"
 
 	"github.com/dop251/goja"
-	"utobot/infra/brain"
+	"utobot/infra/runtime"
 )
 
-type fakeBrainManager struct {
-	route     brain.Route
+type fakeRuntimeManager struct {
+	route     runtime.Route
 	params    map[string]string
 	hasRoute  bool
 	result    goja.Value
-	invokedAs brain.Route
+	invokedAs runtime.Route
 	payload   any
 	invokeErr error
 }
 
-func (f *fakeBrainManager) LoadSource(path string, source []byte) error { return nil }
+func (f *fakeRuntimeManager) LoadSource(path string, source []byte) error { return nil }
 
-func (f *fakeBrainManager) Routes() map[string]brain.Route { return nil }
+func (f *fakeRuntimeManager) Routes() map[string]runtime.Route { return nil }
 
-func (f *fakeBrainManager) Match(method, path string) (brain.Route, map[string]string, bool) {
+func (f *fakeRuntimeManager) Match(method, path string) (runtime.Route, map[string]string, bool) {
 	if f.hasRoute {
 		return f.route, f.params, true
 	}
-	return brain.Route{}, nil, false
+	return runtime.Route{}, nil, false
 }
 
-func (f *fakeBrainManager) InvokeHandler(route brain.Route, data any) (goja.Value, error) {
+func (f *fakeRuntimeManager) InvokeHandler(route runtime.Route, data any) (goja.Value, error) {
 	f.invokedAs = route
 	f.payload = data
 	return f.result, f.invokeErr
 }
 
-func (f *fakeBrainManager) Path() string { return "" }
+func (f *fakeRuntimeManager) Path() string { return "" }
 
-func TestServerRoutesRequestToBrainHandler(t *testing.T) {
+func TestServerRoutesRequestToRuntimeHandler(t *testing.T) {
 	rt := goja.New()
-	manager := &fakeBrainManager{
+	manager := &fakeRuntimeManager{
 		hasRoute: true,
-		route: brain.Route{
+		route: runtime.Route{
 			Method: http.MethodPost,
 			Path:   "/users/:id",
 		},
@@ -142,9 +142,9 @@ func TestServerRoutesRequestToBrainHandler(t *testing.T) {
 
 func TestServerParsesFormUrlencodedPayload(t *testing.T) {
 	rt := goja.New()
-	manager := &fakeBrainManager{
+	manager := &fakeRuntimeManager{
 		hasRoute: true,
-		route: brain.Route{
+		route: runtime.Route{
 			Method: http.MethodPost,
 			Path:   "/contact",
 		},
@@ -190,9 +190,9 @@ func TestServerParsesFormUrlencodedPayload(t *testing.T) {
 }
 
 func TestServerHandlesCORSPreflight(t *testing.T) {
-	manager := &fakeBrainManager{
+	manager := &fakeRuntimeManager{
 		hasRoute: true,
-		route: brain.Route{
+		route: runtime.Route{
 			Method: http.MethodPost,
 			Path:   "/submit",
 		},
@@ -225,7 +225,7 @@ func TestServerHandlesCORSPreflight(t *testing.T) {
 }
 
 func TestServerReturns404ForMissingRoute(t *testing.T) {
-	manager := &fakeBrainManager{}
+	manager := &fakeRuntimeManager{}
 	server := New(8081, manager)
 
 	req := httptest.NewRequest(http.MethodGet, "http://example.com/missing", nil)
@@ -238,14 +238,14 @@ func TestServerReturns404ForMissingRoute(t *testing.T) {
 	}
 }
 
-func TestServerReturnsDetailedErrorPageForBrainError(t *testing.T) {
-	manager := &fakeBrainManager{
+func TestServerReturnsDetailedErrorPageForRuntimeError(t *testing.T) {
+	manager := &fakeRuntimeManager{
 		hasRoute: true,
-		route: brain.Route{
+		route: runtime.Route{
 			Method: http.MethodGet,
 			Path:   "/boom",
 		},
-		invokeErr: errors.New("invoke handler GET /boom: Error: exploded\n    at boom (/brain.js:3:9)"),
+		invokeErr: errors.New("invoke handler GET /boom: Error: exploded\n    at boom (/runtime.js:3:9)"),
 	}
 	server := New(8081, manager)
 
@@ -264,11 +264,11 @@ func TestServerReturnsDetailedErrorPageForBrainError(t *testing.T) {
 
 	body := rr.Body.String()
 	for _, want := range []string{
-		"Brain script error",
+		"Runtime script error",
 		"GET /boom",
 		"req-42",
 		"Error: exploded",
-		"at boom (/brain.js:3:9)",
+		"at boom (/runtime.js:3:9)",
 	} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("expected error page to contain %q, got:\n%s", want, body)
@@ -277,9 +277,9 @@ func TestServerReturnsDetailedErrorPageForBrainError(t *testing.T) {
 }
 
 func TestServerEscapesDetailedErrorPage(t *testing.T) {
-	manager := &fakeBrainManager{
+	manager := &fakeRuntimeManager{
 		hasRoute: true,
-		route: brain.Route{
+		route: runtime.Route{
 			Method: http.MethodGet,
 			Path:   "/boom",
 		},

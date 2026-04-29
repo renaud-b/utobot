@@ -10,14 +10,14 @@ import (
 	"utobot/infra/network"
 )
 
-type stubBrainManager struct {
+type stubRuntimeManager struct {
 	loadCalls int
 	lastPath  string
 	lastJS    []byte
 	err       error
 }
 
-func (s *stubBrainManager) LoadSource(path string, source []byte) error {
+func (s *stubRuntimeManager) LoadSource(path string, source []byte) error {
 	s.loadCalls++
 	s.lastPath = path
 	s.lastJS = append([]byte(nil), source...)
@@ -56,7 +56,7 @@ func TestBootstrapPersistsHeight(t *testing.T) {
 	dir := t.TempDir()
 	statePath := filepath.Join(dir, "height.json")
 
-	w := New(&stubClient{}, &stubBrainManager{}, "chain-1", statePath, 0)
+	w := New(&stubClient{}, &stubRuntimeManager{}, "chain-1", statePath, 0)
 	if err := w.Bootstrap(42); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -78,7 +78,7 @@ func TestSyncOnceDoesNotReloadWhenStateMissing(t *testing.T) {
 		height: 42,
 		script: []byte("script-v1"),
 	}
-	manager := &stubBrainManager{}
+	manager := &stubRuntimeManager{}
 	w := New(client, manager, "chain-1", statePath, 0)
 
 	reloaded, err := w.SyncOnce()
@@ -112,7 +112,7 @@ func TestSyncOnceReloadsWhenHeightChanges(t *testing.T) {
 		height: 43,
 		script: []byte("script-v2"),
 	}
-	manager := &stubBrainManager{}
+	manager := &stubRuntimeManager{}
 	w := New(client, manager, "chain-1", statePath, 0)
 
 	reloaded, err := w.SyncOnce()
@@ -153,7 +153,7 @@ func TestSyncOnceSkipsReloadWhenHeightUnchanged(t *testing.T) {
 		height: 42,
 		script: []byte("script-v2"),
 	}
-	manager := &stubBrainManager{}
+	manager := &stubRuntimeManager{}
 	w := New(client, manager, "chain-1", statePath, 0)
 
 	reloaded, err := w.SyncOnce()

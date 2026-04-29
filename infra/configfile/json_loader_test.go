@@ -18,7 +18,7 @@ func TestJSONLoaderLoad(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js",
+		"runtime_chain_id": "./runtime.js",
 		"llm_key": "sk-test"
 	}`)
 
@@ -37,12 +37,12 @@ func TestJSONLoaderLoad(t *testing.T) {
 	}
 
 	want := domain.Parameters{
-		HTTPAddress:   "127.0.0.1:8080",
-		Port:          8081,
-		WalletPath:    "./wallet.json",
-		BrainChainID:  "./brain.js",
-		EncryptionKey: params.EncryptionKey,
-		LLMKey:        "sk-test",
+		HTTPAddress:    "127.0.0.1:8080",
+		Port:           8081,
+		WalletPath:     "./wallet.json",
+		RuntimeChainID: "./runtime.js",
+		EncryptionKey:  params.EncryptionKey,
+		LLMKey:         "sk-test",
 	}
 
 	if params != want {
@@ -70,7 +70,7 @@ func TestJSONLoaderLoadAllowsMissingStateDBPath(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js"
+		"runtime_chain_id": "./runtime.js"
 	}`)
 
 	if err := os.WriteFile(path, content, 0o600); err != nil {
@@ -105,7 +105,7 @@ func TestJSONLoaderLoadKeepsExistingEncryptionKey(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js",
+		"runtime_chain_id": "./runtime.js",
 		"encryption_key": "` + encodedKey + `"
 	}`)
 
@@ -131,7 +131,7 @@ func TestJSONLoaderLoadRejectsInvalidEncryptionKey(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js",
+		"runtime_chain_id": "./runtime.js",
 		"encryption_key": "AA=="
 	}`)
 
@@ -154,7 +154,7 @@ func TestJSONLoaderLoadRejectsUnknownFields(t *testing.T) {
 		"http_address": "127.0.0.1:8080",
 		"port": 8081,
 		"wallet_path": "./wallet.json",
-		"brain_chain_id": "./brain.js",
+		"runtime_chain_id": "./runtime.js",
 		"unexpected": true
 	}`)
 
