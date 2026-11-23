@@ -168,3 +168,32 @@ func TestJSONLoaderLoadRejectsUnknownFields(t *testing.T) {
 		t.Fatal("expected an error, got nil")
 	}
 }
+
+func TestJSONLoaderLoadWithoutWallet(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	content := []byte(`{
+		"http_address": "127.0.0.1:8080",
+		"port": 8081,
+		"runtime_chain_id": "friend-mailbox",
+		"state_db_path": "./friends.state.sqlite"
+	}`)
+	if err := os.WriteFile(path, content, 0o600); err != nil {
+		t.Fatalf("write config file: %v", err)
+	}
+
+	params, err := NewJSONLoader().Load(path)
+	if err != nil {
+		t.Fatalf("load walletless configuration: %v", err)
+	}
+	if params.WalletPath != "" {
+		t.Fatalf("unexpected wallet path %q", params.WalletPath)
+	}
+	if params.StateDBPath != "./friends.state.sqlite" {
+		t.Fatalf("unexpected state db path %q", params.StateDBPath)
+	}
+	if _, err := walletcrypto.DecodeEncryptionKey(params.EncryptionKey); err != nil {
+		t.Fatalf("encryption key should still be initialized: %v", err)
+	}
+}
