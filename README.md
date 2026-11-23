@@ -26,19 +26,22 @@ Build the container image:
 docker build -t utobot .
 ```
 
-Run a walletless bot with a mounted configuration:
+Run a walletless bot with a writable configuration and persistent SQLite state:
 
 ```bash
+mkdir -p data
+cp config.example.json data/config.json
+# Make sure the container's unprivileged utobot user can write to ./data.
 docker run --rm \
-  -p 9000:9000 \
-  -v "$PWD/config.json:/opt/utobot/config.json" \
-  utobot
+  -p 127.0.0.1:9000:9000 \
+  -v "$PWD/data:/data" \
+  utobot /data/config.json
 ```
 
-The image runs `utobot /opt/utobot/config.json` by default. The config file
-must be writable on first launch if `encryption_key` is not already set.
-For durable state, mount the SQLite directory as well and set `state_db_path`
-inside it. Ensure the container's `utobot` user can write to those paths.
+The image runs `utobot /opt/utobot/config.json` by default, but the example
+above overrides the config path. The config file must be writable on first
+launch because `encryption_key` is generated and persisted when absent. The
+SQLite database and reload-height file must also live on a writable mount.
 
 Bots that need a wallet can still set `wallet_path` to
 `/opt/utobot/wallet.utx` and mount the corresponding file with
@@ -66,12 +69,11 @@ Example:
 
 ```json
 {
-  "http_address": "127.0.0.1:8080",
-  "port": 8081,
+  "http_address": "https://metapixia.com",
+  "port": 9000,
   "runtime_chain_id": "AZ3BXaotezKx2AioD3gGvA",
-  "script_height_path": "./.utobot.script-height.json",
-  "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
-  "llm_key": "sk-your-openai-api-key"
+  "state_db_path": "/data/utobot.state.sqlite",
+  "script_height_path": "/data/utobot.script-height.json"
 }
 ```
 
