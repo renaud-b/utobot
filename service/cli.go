@@ -54,7 +54,7 @@ func Run(args []string) error {
 
 	slog.Info("fetched javascript", "length", len(js))
 
-	w, err := walletcrypto.LoadFromFile(params.WalletPath)
+	w, err := loadConfiguredWallet(params.WalletPath)
 	if err != nil {
 		return err
 	}
@@ -101,6 +101,15 @@ func Run(args []string) error {
 	server := httpserver.New(params.Port, manager)
 	slog.Info("starting http server", "addr", server.Addr())
 	return server.Start()
+}
+
+// A wallet is needed only when explicitly configured. Pure HTTP runtimes may
+// operate without an identity; an invalid configured wallet must still fail.
+func loadConfiguredWallet(path string) (walletcrypto.KeyPair, error) {
+	if path == "" {
+		return walletcrypto.KeyPair{}, nil
+	}
+	return walletcrypto.LoadFromFile(path)
 }
 
 func parseArgs(args []string) (string, string, error) {
