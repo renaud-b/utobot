@@ -738,13 +738,18 @@ module.exports = {
 				status: 200,
 				body: {
 					valid: crypto.verify_ecdsa_signature(%q, %q, %q),
+					valid_der: crypto.verify_ecdsa_signature(%q, %q, %q),
+					wrong_hash: crypto.verify_ecdsa_signature(%q, %q, %q),
 					address: crypto.derive_address(%q),
 				},
 			};
 		},
 	},
 };
-`, kp.PublicKeyHex, messageHashHex, signatureHex, kp.PublicKeyHex)))
+`, kp.PublicKeyHex, messageHashHex, signatureHex,
+		kp.PublicKeyHex, messageHashHex, signatureDERHex,
+		kp.PublicKeyHex, "0000000000000000000000000000000000000000000000000000000000000000", signatureDERHex,
+		kp.PublicKeyHex)))
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
@@ -765,6 +770,12 @@ module.exports = {
 	}
 	if body["valid"] != true {
 		t.Fatalf("unexpected signature verification result: %#v", body["valid"])
+	}
+	if body["valid_der"] != true {
+		t.Fatalf("DER signature over the provided digest should verify: %#v", body["valid_der"])
+	}
+	if body["wrong_hash"] != false {
+		t.Fatalf("signature should not verify against a different digest: %#v", body["wrong_hash"])
 	}
 	if body["address"] != kp.Address {
 		t.Fatalf("unexpected derived address: %#v", body["address"])
