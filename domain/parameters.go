@@ -20,9 +20,6 @@ func (p Parameters) Validate() error {
 	if p.Port <= 0 || p.Port > 65535 {
 		return fmt.Errorf("port must be between 1 and 65535")
 	}
-	if p.WalletPath == "" {
-		return fmt.Errorf("wallet_path is required")
-	}
 	if p.RuntimeChainID == "" {
 		return fmt.Errorf("runtime_chain_id is required")
 	}
