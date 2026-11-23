@@ -3,7 +3,6 @@ package runtime
 import (
 	"context"
 	"crypto/md5"
-	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -630,11 +629,11 @@ func bindRuntimeAPI(runtime *goja.Runtime, cipherKey []byte, llm LLMConnector, s
 			panic(runtime.NewTypeError("crypto.verify_ecdsa_signature requires public_key_hex, message_hash_hex, and signature_hex"))
 		}
 
-		sum := sha256.Sum256([]byte(call.Argument(1).String()))
-		hexHash := hexString(sum[:])
+		// The JavaScript contract passes SHA-256 hex, not plaintext. Hashing
+		// that string again would reject correctly signed wallet messages.
 		ok, err := crypto.VerifySignature(
 			call.Argument(0).String(),
-			hexHash,
+			call.Argument(1).String(),
 			call.Argument(2).String(),
 		)
 		if err != nil {
