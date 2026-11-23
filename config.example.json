@@ -3,6 +3,5 @@
   "http_address": "https://metapixia.com",
   "port": 9000,
   "script_height_path": "/tmp/.utobot.script-height.json",
-  "wallet_path": "/opt/utobot/wallet.utx",
   "llm_key": "sk-your-openai-api-key"
 }
