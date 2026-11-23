@@ -17,7 +17,6 @@ func TestParametersValidate(t *testing.T) {
 		}
 	})
 
-
 	t.Run("valid without wallet", func(t *testing.T) {
 		params := Parameters{
 			HTTPAddress:    "127.0.0.1:8080",
