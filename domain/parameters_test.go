@@ -17,6 +17,19 @@ func TestParametersValidate(t *testing.T) {
 		}
 	})
 
+	t.Run("valid without wallet", func(t *testing.T) {
+		params := Parameters{
+			HTTPAddress:    "127.0.0.1:8080",
+			Port:           8081,
+			RuntimeChainID: "./runtime.js",
+			StateDBPath:    "./state.sqlite",
+		}
+
+		if err := params.Validate(); err != nil {
+			t.Fatalf("walletless runtime should be valid, got %v", err)
+		}
+	})
+
 	t.Run("missing runtime path", func(t *testing.T) {
 		params := Parameters{
 			HTTPAddress: "127.0.0.1:8080",

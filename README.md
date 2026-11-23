@@ -26,23 +26,27 @@ Build the container image:
 docker build -t utobot .
 ```
 
-Run it with a mounted config and wallet directory:
+Run a walletless bot with a writable configuration and persistent SQLite state:
 
 ```bash
+mkdir -p data
+cp config.example.json data/config.json
+# Make sure the container's unprivileged utobot user can write to ./data.
 docker run --rm \
-  -p 9000:9000 \
-  -v "$PWD/config.json:/opt/utobot/config.json" \
-  -v "$PWD/wallet.utx:/opt/utobot/wallet.utx:ro" \
-  utobot
+  -p 127.0.0.1:9000:9000 \
+  -v "$PWD/data:/data" \
+  utobot /data/config.json
 ```
 
-The image runs `utobot /opt/utobot/config.json` by default. For container runs, set `wallet_path` in `config.json` to `/opt/utobot/wallet.utx`.
+The image runs `utobot /opt/utobot/config.json` by default, but the example
+above overrides the config path. The config file must be writable on first
+launch because `encryption_key` is generated and persisted when absent. The
+SQLite database and reload-height file must also live on a writable mount.
 
-With Docker Compose, link a different wallet file with:
-
-```bash
-UTOBOT_WALLET_FILE=/path/to/wallet.utx docker compose up --build
-```
+Bots that need a wallet can still set `wallet_path` to
+`/opt/utobot/wallet.utx` and mount the corresponding file with
+`-v "$PWD/wallet.utx:/opt/utobot/wallet.utx:ro"`.
+A configured wallet must exist and be valid; Utobot never creates one.
 
 Pass another config path, chain id override, or `--debug` as container arguments when needed.
 
@@ -54,7 +58,7 @@ The config loader expects a flat JSON object with these fields.
 | --- | --- | --- |
 | `http_address` | yes | Base address used to fetch the JavaScript runtime |
 | `port` | yes | Port used by the local HTTP server |
-| `wallet_path` | yes | Required by startup validation; currently kept in the loaded parameters |
+| `wallet_path` | no | Optional wallet file. If supplied it must exist and be valid; otherwise the runtime starts without an identity |
 | `runtime_chain_id` | yes | Chain id used to fetch the JavaScript runtime |
 | `state_db_path` | no | SQLite file used to persist the bot state; if omitted, state stays in memory |
 | `script_height_path` | no | File used by the reload worker to remember the last seen height |
@@ -65,15 +69,16 @@ Example:
 
 ```json
 {
-  "http_address": "127.0.0.1:8080",
-  "port": 8081,
-  "wallet_path": "./wallet.json",
+  "http_address": "https://metapixia.com",
+  "port": 9000,
   "runtime_chain_id": "AZ3BXaotezKx2AioD3gGvA",
-  "script_height_path": "./.utobot.script-height.json",
-  "encryption_key": "base64-encoded-32-byte-key-generated-on-first-load",
-  "llm_key": "sk-your-openai-api-key"
+  "state_db_path": "/data/utobot.state.sqlite",
+  "script_height_path": "/data/utobot.script-height.json"
 }
 ```
+
+Omit `wallet_path` to run a service that only verifies signatures and stores state,
+such as a friend acceptance inbox. Existing wallet-backed configurations work unchanged.
 
 If `script_height_path` is empty, the reload worker falls back to `.utobot.script-height.json`.
 If `state_db_path` is empty or omitted, Utobot keeps state in memory instead of SQLite.

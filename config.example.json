@@ -2,7 +2,6 @@
   "runtime_chain_id": "AZ3BXaotezKx2AioD3gGvA",
   "http_address": "https://metapixia.com",
   "port": 9000,
-  "script_height_path": "/tmp/.utobot.script-height.json",
-  "wallet_path": "/opt/utobot/wallet.utx",
-  "llm_key": "sk-your-openai-api-key"
+  "state_db_path": "/data/utobot.state.sqlite",
+  "script_height_path": "/data/utobot.script-height.json"
 }
